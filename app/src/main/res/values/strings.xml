@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">VinylCast</string>
+    <string name="notification_channel_name">VinylCast Streaming</string>
+    <string name="notification_channel_desc">Zeigt den aktiven Line-In Stream zur Sonos Playbar an</string>
+</resources>
