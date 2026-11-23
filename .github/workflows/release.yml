@@ -34,7 +34,7 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
 
-      - name: Decode Release Keystore (if configured)
+      - name: Prepare Release Keystore
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -44,15 +44,28 @@ jobs:
             echo "KEYSTORE_FILE=${{ github.workspace }}/release.jks" >> "$GITHUB_ENV"
             echo "has_keystore=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No KEYSTORE_BASE64 secret found; using debug signing fallback."
+            echo "No KEYSTORE_BASE64 secret found; generating ephemeral release keystore."
+            keytool -genkeypair -v \
+              -keystore "${{ github.workspace }}/release.jks" \
+              -alias vinylcast \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass vinylcast123 \
+              -keypass vinylcast123 \
+              -dname "CN=VinylCast, O=VinylCast, C=DE"
+            echo "KEYSTORE_FILE=${{ github.workspace }}/release.jks" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=vinylcast123" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=vinylcast" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=vinylcast123" >> "$GITHUB_ENV"
             echo "has_keystore=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build Release APK
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || env.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || env.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || env.KEY_PASSWORD }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
