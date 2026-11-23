@@ -27,45 +27,51 @@ import com.vinylcast.ui.theme.VinylCastTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
-        )
 
         setContent {
-            VinylCastTheme {
-                val vm: MainViewModel = viewModel()
-                val settings by vm.settings.collectAsState()
-                var showSettings by remember { mutableStateOf(false) }
+            val vm: MainViewModel = viewModel()
+            val settings by vm.settings.collectAsState()
+            var showSettings by remember { mutableStateOf(false) }
 
-                // Apply Kiosk / Keep-Screen-On flag
-                LaunchedEffect(settings.keepScreenOn) {
-                    if (settings.keepScreenOn) {
-                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    } else {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    }
+            LaunchedEffect(settings.darkMode) {
+                val style = if (settings.darkMode) {
+                    SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(
+                        android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT
+                    )
                 }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
 
-                // Request runtime permissions on launch
-                val permissionLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.RequestMultiplePermissions()
-                ) { }
-
-                LaunchedEffect(Unit) {
-                    val required = buildList {
-                        add(Manifest.permission.RECORD_AUDIO)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            add(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-                    }.filter {
-                        ContextCompat.checkSelfPermission(this@MainActivity, it) != PackageManager.PERMISSION_GRANTED
-                    }
-                    if (required.isNotEmpty()) {
-                        permissionLauncher.launch(required.toTypedArray())
-                    }
+            LaunchedEffect(settings.keepScreenOn) {
+                if (settings.keepScreenOn) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+            }
 
+            val permissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestMultiplePermissions()
+            ) { }
+
+            LaunchedEffect(Unit) {
+                val required = buildList {
+                    add(Manifest.permission.RECORD_AUDIO)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }.filter {
+                    ContextCompat.checkSelfPermission(this@MainActivity, it) != PackageManager.PERMISSION_GRANTED
+                }
+                if (required.isNotEmpty()) {
+                    permissionLauncher.launch(required.toTypedArray())
+                }
+            }
+
+            VinylCastTheme(darkTheme = settings.darkMode) {
                 if (showSettings) {
                     SettingsScreen(
                         viewModel = vm,

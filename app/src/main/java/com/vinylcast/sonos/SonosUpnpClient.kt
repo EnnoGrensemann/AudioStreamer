@@ -1,7 +1,6 @@
 package com.vinylcast.sonos
 
 import com.vinylcast.model.SonosDevice
-import com.vinylcast.model.TrackInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,11 +21,10 @@ class SonosUpnpClient(
 
     suspend fun startStream(
         device: SonosDevice,
-        streamUrl: String,
-        track: TrackInfo? = null
+        streamUrl: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val didl = SonosXmlBuilder.buildDidlLiteMetadata(streamUrl, track)
+            val didl = SonosXmlBuilder.buildDidlLiteMetadata(streamUrl)
             val setUriBody = SonosXmlBuilder.buildSetAvTransportUriSoap(streamUrl, didl)
             sendSoapAction(
                 url = "${device.controlBaseUrl}/MediaRenderer/AVTransport/Control",
@@ -34,29 +32,6 @@ class SonosUpnpClient(
                 xmlBody = setUriBody
             )
 
-            val playBody = SonosXmlBuilder.buildPlaySoap()
-            sendSoapAction(
-                url = "${device.controlBaseUrl}/MediaRenderer/AVTransport/Control",
-                soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#Play\"",
-                xmlBody = playBody
-            )
-            Unit
-        }
-    }
-
-    suspend fun updateMetadata(
-        device: SonosDevice,
-        streamUrl: String,
-        track: TrackInfo
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val didl = SonosXmlBuilder.buildDidlLiteMetadata(streamUrl, track)
-            val setUriBody = SonosXmlBuilder.buildSetAvTransportUriSoap(streamUrl, didl)
-            sendSoapAction(
-                url = "${device.controlBaseUrl}/MediaRenderer/AVTransport/Control",
-                soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\"",
-                xmlBody = setUriBody
-            )
             val playBody = SonosXmlBuilder.buildPlaySoap()
             sendSoapAction(
                 url = "${device.controlBaseUrl}/MediaRenderer/AVTransport/Control",

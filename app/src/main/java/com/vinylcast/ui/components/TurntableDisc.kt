@@ -4,7 +4,6 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -28,19 +27,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import coil.compose.rememberAsyncImagePainter
-import com.vinylcast.ui.theme.VinylColors
+import com.vinylcast.ui.theme.VinylTheme
 import kotlin.math.cos
 import kotlin.math.sin
 
 @Composable
 fun TurntableDisc(
     isSpinning: Boolean,
-    coverUrl: String?,
     modifier: Modifier = Modifier
 ) {
+    val colors = VinylTheme.colors
     var rotationAngle by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(isSpinning) {
@@ -50,7 +47,6 @@ fun TurntableDisc(
             withFrameNanos { frameNanos ->
                 if (lastNanos != 0L) {
                     val dtSec = (frameNanos - lastNanos) / 1_000_000_000f
-                    // 33.3 RPM = 200 deg/sec; slightly gentler visually at 75 deg/sec
                     rotationAngle = (rotationAngle + dtSec * 75f) % 360f
                 }
                 lastNanos = frameNanos
@@ -68,7 +64,6 @@ fun TurntableDisc(
         modifier = modifier.aspectRatio(1f),
         contentAlignment = Alignment.Center
     ) {
-        // Platter & Vinyl Record
         Canvas(
             modifier = Modifier
                 .fillMaxSize(0.92f)
@@ -80,7 +75,7 @@ fun TurntableDisc(
             // Metallic platter rim
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFF2D2722), Color(0xFF473E35), Color(0xFF1D1916)),
+                    colors = listOf(colors.platterInner, colors.platterOuter, colors.platterInner),
                     center = center,
                     radius = outerRadius
                 ),
@@ -95,7 +90,7 @@ fun TurntableDisc(
                 val x = center.x + (dotRadius * cos(rad)).toFloat()
                 val y = center.y + (dotRadius * sin(rad)).toFloat()
                 drawCircle(
-                    color = VinylColors.AmberPrimary.copy(alpha = 0.45f),
+                    color = colors.amberPrimary.copy(alpha = 0.5f),
                     radius = 2.2f,
                     center = Offset(x, y)
                 )
@@ -104,7 +99,7 @@ fun TurntableDisc(
             // Black vinyl disc
             val vinylRadius = outerRadius * 0.92f
             drawCircle(
-                color = VinylColors.VinylBlack,
+                color = colors.vinylBlack,
                 radius = vinylRadius,
                 center = center
             )
@@ -130,81 +125,66 @@ fun TurntableDisc(
             for (i in 1..grooveSteps) {
                 val r = vinylRadius * (0.42f + (i.toFloat() / grooveSteps) * 0.54f)
                 drawCircle(
-                    color = VinylColors.VinylGroove,
+                    color = colors.vinylGroove,
                     radius = r,
                     center = center,
                     style = Stroke(width = 1.2f)
                 )
             }
 
-            // Center label backing
+            // Center label
             drawCircle(
-                color = VinylColors.AmberPrimary,
+                color = colors.amberPrimary,
                 radius = vinylRadius * 0.34f,
                 center = center
             )
-        }
-
-        // Album cover as rotating center label
-        Box(
-            modifier = Modifier
-                .fillMaxSize(0.30f)
-                .rotate(rotationAngle)
-                .clip(CircleShape)
-                .background(VinylColors.AmberPrimary),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!coverUrl.isNullOrBlank()) {
-                Image(
-                    painter = rememberAsyncImagePainter(model = coverUrl),
-                    contentDescription = "Album Cover",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            // Center spindle hole
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(VinylColors.Background)
+            // Inner label ring
+            drawCircle(
+                color = colors.background.copy(alpha = 0.25f),
+                radius = vinylRadius * 0.28f,
+                center = center,
+                style = Stroke(width = 1.5f)
             )
         }
+
+        // Center spindle hole
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .clip(CircleShape)
+                .background(colors.background)
+        )
 
         // Tonearm overlay (top-right pivot)
         Canvas(modifier = Modifier.fillMaxSize()) {
             val pivot = Offset(size.width * 0.87f, size.height * 0.14f)
-            // Tonearm base
             drawCircle(
-                color = Color(0xFF3E362E),
+                color = colors.platterOuter,
                 radius = size.minDimension * 0.055f,
                 center = pivot
             )
             drawCircle(
-                color = VinylColors.AmberPrimary,
+                color = colors.amberPrimary,
                 radius = size.minDimension * 0.025f,
                 center = pivot
             )
 
             rotate(degrees = tonearmAngle, pivot = pivot) {
                 val armEnd = Offset(pivot.x - size.width * 0.09f, pivot.y + size.height * 0.44f)
-                // Arm shadow
                 drawLine(
-                    color = Color.Black.copy(alpha = 0.45f),
+                    color = Color.Black.copy(alpha = 0.35f),
                     start = pivot + Offset(4f, 6f),
                     end = armEnd + Offset(4f, 6f),
                     strokeWidth = 10f,
                     cap = StrokeCap.Round
                 )
-                // Metallic tonearm tube
                 drawLine(
-                    color = Color(0xFFC2B7A8),
+                    color = colors.tonearmMetal,
                     start = pivot,
                     end = armEnd,
                     strokeWidth = 8f,
                     cap = StrokeCap.Round
                 )
-                // Headshell & cartridge
                 val headEnd = Offset(armEnd.x - size.width * 0.05f, armEnd.y + size.height * 0.06f)
                 drawLine(
                     color = Color(0xFF28221D),
@@ -213,10 +193,9 @@ fun TurntableDisc(
                     strokeWidth = 16f,
                     cap = StrokeCap.Butt
                 )
-                // Stylus tip glow when active
                 if (isSpinning) {
                     drawCircle(
-                        color = VinylColors.AmberGlow,
+                        color = colors.amberGlow,
                         radius = 4.5f,
                         center = headEnd
                     )

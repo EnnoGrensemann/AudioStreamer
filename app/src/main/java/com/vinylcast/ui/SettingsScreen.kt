@@ -25,6 +25,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,31 +37,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vinylcast.ui.theme.VinylColors
+import com.vinylcast.ui.theme.VinylTheme
 
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val colors = VinylTheme.colors
     val settings by viewModel.settings.collectAsState()
     val inputDevices by viewModel.inputDevices.collectAsState()
 
-    var host by remember(settings.acrHost) { mutableStateOf(settings.acrHost) }
-    var accessKey by remember(settings.acrAccessKey) { mutableStateOf(settings.acrAccessKey) }
-    var accessSecret by remember(settings.acrAccessSecret) { mutableStateOf(settings.acrAccessSecret) }
     var portText by remember(settings.streamPort) { mutableStateOf(settings.streamPort.toString()) }
     var savedFeedback by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VinylColors.Background)
+            .background(colors.background)
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(18.dp),
@@ -70,61 +70,110 @@ fun SettingsScreen(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Zurück",
-                    tint = VinylColors.IvoryText
+                    tint = colors.textPrimary
                 )
             }
             Text(
                 text = "Einstellungen",
-                color = VinylColors.IvoryText,
+                color = colors.textPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        // ACRCloud Section
+        // Appearance Section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(VinylColors.Surface)
-                .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "ACRCloud Song-Erkennung",
-                color = VinylColors.AmberPrimary,
+                text = "Darstellung & Display",
+                color = colors.amberPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold
             )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.toggleDarkMode() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Light Mode",
+                        color = colors.textPrimary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "Helles Design statt dunklem Hi-Fi-Theme",
+                        color = colors.textMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = !settings.darkMode,
+                    onCheckedChange = { viewModel.toggleDarkMode() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = colors.amberPrimary
+                    )
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.toggleKeepScreenOn() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Display aktiv lassen",
+                        color = colors.textPrimary,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = "Verhindert automatisches Ausschalten",
+                        color = colors.textMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                Switch(
+                    checked = settings.keepScreenOn,
+                    onCheckedChange = { viewModel.toggleKeepScreenOn() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = colors.amberPrimary
+                    )
+                )
+            }
+        }
+
+        // Stream Port Section
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(
-                text = "Kostenlosen Account auf console.acrcloud.com anlegen (Audio & Video Recognition) und die Zugangsdaten hier eintragen.",
-                color = VinylColors.MutedText,
-                fontSize = 12.sp
+                text = "Netzwerk-Stream",
+                color = colors.amberPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
             )
 
-            OutlinedTextField(
-                value = host,
-                onValueChange = { host = it; savedFeedback = false },
-                label = { Text("ACR Host (z.B. identify-eu-west-1.acrcloud.com)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = accessKey,
-                onValueChange = { accessKey = it; savedFeedback = false },
-                label = { Text("Access Key") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = accessSecret,
-                onValueChange = { accessSecret = it; savedFeedback = false },
-                label = { Text("Access Secret") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth()
-            )
             OutlinedTextField(
                 value = portText,
                 onValueChange = { portText = it.filter(Char::isDigit); savedFeedback = false },
@@ -136,18 +185,17 @@ fun SettingsScreen(
 
             Button(
                 onClick = {
-                    viewModel.saveAcrCredentials(host, accessKey, accessSecret)
                     portText.toIntOrNull()?.let { viewModel.saveStreamPort(it) }
                     savedFeedback = true
                 },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = VinylColors.AmberPrimary,
-                    contentColor = VinylColors.Background
+                    containerColor = colors.amberPrimary,
+                    contentColor = if (settings.darkMode) colors.background else Color.White
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (savedFeedback) "Gespeichert" else "Speichern",
+                    text = if (savedFeedback) "Gespeichert" else "Port speichern",
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -158,14 +206,14 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(VinylColors.Surface)
-                .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "Audio-Eingang (Line-In)",
-                color = VinylColors.AmberPrimary,
+                color = colors.amberPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -180,11 +228,11 @@ fun SettingsScreen(
                 RadioButton(
                     selected = settings.preferredInputDeviceId == null,
                     onClick = { viewModel.selectPreferredInputDevice(null) },
-                    colors = RadioButtonDefaults.colors(selectedColor = VinylColors.AmberPrimary)
+                    colors = RadioButtonDefaults.colors(selectedColor = colors.amberPrimary)
                 )
                 Text(
                     text = "Automatisch (USB-C Adapter bevorzugt)",
-                    color = VinylColors.IvoryText,
+                    color = colors.textPrimary,
                     fontSize = 14.sp
                 )
             }
@@ -200,17 +248,17 @@ fun SettingsScreen(
                     RadioButton(
                         selected = settings.preferredInputDeviceId == device.id,
                         onClick = { viewModel.selectPreferredInputDevice(device.id) },
-                        colors = RadioButtonDefaults.colors(selectedColor = VinylColors.AmberPrimary)
+                        colors = RadioButtonDefaults.colors(selectedColor = colors.amberPrimary)
                     )
                     Column {
                         Text(
                             text = device.name,
-                            color = VinylColors.IvoryText,
+                            color = colors.textPrimary,
                             fontSize = 14.sp
                         )
                         Text(
                             text = "${device.typeLabel} (ID ${device.id})",
-                            color = VinylColors.MutedText,
+                            color = colors.textMuted,
                             fontSize = 11.sp
                         )
                     }

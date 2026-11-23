@@ -1,7 +1,6 @@
 package com.vinylcast.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,10 +23,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ScreenLockPortrait
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Stop
@@ -39,7 +40,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -53,32 +53,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.rememberAsyncImagePainter
-import com.vinylcast.model.RecognitionState
 import com.vinylcast.ui.components.TurntableDisc
 import com.vinylcast.ui.components.VuMeter
-import com.vinylcast.ui.theme.VinylColors
+import com.vinylcast.ui.theme.VinylTheme
 
 @Composable
 fun TurntableScreen(
     viewModel: MainViewModel,
     onOpenSettings: () -> Unit
 ) {
+    val colors = VinylTheme.colors
     val settings by viewModel.settings.collectAsState()
     val inputDevices by viewModel.inputDevices.collectAsState()
     val isStreaming by viewModel.isStreaming.collectAsState()
+    val isAudioDetected by viewModel.isAudioDetected.collectAsState()
     val audioLevels by viewModel.audioLevels.collectAsState()
-    val currentTrack by viewModel.currentTrack.collectAsState()
     val sonosDevices by viewModel.sonosDevices.collectAsState()
     val selectedSonos by viewModel.selectedSonos.collectAsState()
     val isDiscovering by viewModel.isDiscoveringSonos.collectAsState()
     val volume by viewModel.sonosVolume.collectAsState()
-    val recognitionState by viewModel.recognitionState.collectAsState()
     val lastError by viewModel.lastError.collectAsState()
 
     val usbDevice = inputDevices.firstOrNull { it.isUsb }
@@ -87,7 +85,7 @@ fun TurntableScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(VinylColors.Background)
+            .background(colors.background)
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 14.dp),
@@ -103,31 +101,38 @@ fun TurntableScreen(
                 Icon(
                     imageVector = Icons.Default.Album,
                     contentDescription = null,
-                    tint = VinylColors.AmberPrimary,
+                    tint = colors.amberPrimary,
                     modifier = Modifier.size(26.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "VinylCast",
-                    color = VinylColors.IvoryText,
+                    color = colors.textPrimary,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { viewModel.toggleDarkMode() }) {
+                    Icon(
+                        imageVector = if (settings.darkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
+                        contentDescription = if (settings.darkMode) "Light Mode aktivieren" else "Dark Mode aktivieren",
+                        tint = colors.amberPrimary
+                    )
+                }
                 IconButton(onClick = { viewModel.toggleKeepScreenOn() }) {
                     Icon(
-                        imageVector = Icons.Default.LightMode,
+                        imageVector = Icons.Default.ScreenLockPortrait,
                         contentDescription = "Display aktiv lassen",
-                        tint = if (settings.keepScreenOn) VinylColors.AmberPrimary else VinylColors.MutedText
+                        tint = if (settings.keepScreenOn) colors.amberPrimary else colors.textMuted
                     )
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Einstellungen",
-                        tint = VinylColors.IvoryText
+                        tint = colors.textPrimary
                     )
                 }
             }
@@ -138,13 +143,12 @@ fun TurntableScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // USB Status Pill
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(VinylColors.Surface)
-                    .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(10.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.borderSubtle, RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -152,33 +156,32 @@ fun TurntableScreen(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (usbDevice != null) VinylColors.EmeraldActive else VinylColors.AmberPrimary)
+                        .background(if (usbDevice != null) colors.emeraldActive else colors.amberPrimary)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Icon(
                     imageVector = Icons.Default.Usb,
                     contentDescription = null,
-                    tint = VinylColors.MutedText,
+                    tint = colors.textMuted,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = usbDevice?.name ?: "Kein USB-Adapter",
-                    color = VinylColors.IvoryText,
+                    color = colors.textPrimary,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            // Sonos Picker Pill
             Box(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(VinylColors.Surface)
-                        .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(10.dp))
+                        .background(colors.surface)
+                        .border(1.dp, colors.borderSubtle, RoundedCornerShape(10.dp))
                         .clickable { sonosMenuExpanded = true }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -191,13 +194,13 @@ fun TurntableScreen(
                         Icon(
                             imageVector = Icons.Default.Speaker,
                             contentDescription = null,
-                            tint = if (selectedSonos != null) VinylColors.AmberPrimary else VinylColors.MutedText,
+                            tint = if (selectedSonos != null) colors.amberPrimary else colors.textMuted,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = selectedSonos?.roomName ?: if (isDiscovering) "Suche Sonos..." else "Sonos wählen",
-                            color = VinylColors.IvoryText,
+                            color = colors.textPrimary,
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -207,13 +210,13 @@ fun TurntableScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(14.dp),
                             strokeWidth = 2.dp,
-                            color = VinylColors.AmberPrimary
+                            color = colors.amberPrimary
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Sonos neu suchen",
-                            tint = VinylColors.MutedText,
+                            tint = colors.textMuted,
                             modifier = Modifier
                                 .size(16.dp)
                                 .clickable { viewModel.discoverSonos() }
@@ -248,27 +251,26 @@ fun TurntableScreen(
             }
         }
 
-        // Error / Status Banner
-        val errorBanner = lastError ?: (recognitionState as? RecognitionState.Error)?.message
-        AnimatedVisibility(visible = errorBanner != null) {
+        // Error Banner
+        AnimatedVisibility(visible = lastError != null) {
             Surface(
-                color = VinylColors.WarmRed.copy(alpha = 0.16f),
+                color = colors.warmRed.copy(alpha = 0.16f),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, VinylColors.WarmRed.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                    .border(1.dp, colors.warmRed.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
                     .clickable { viewModel.dismissError() }
             ) {
                 Text(
-                    text = errorBanner.orEmpty(),
-                    color = VinylColors.IvoryText,
+                    text = lastError.orEmpty(),
+                    color = colors.textPrimary,
                     fontSize = 12.sp,
                     modifier = Modifier.padding(12.dp)
                 )
             }
         }
 
-        // Animated Turntable Platter
+        // Animated Turntable Platter (spins when streaming and audio signal is detected)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -276,77 +278,78 @@ fun TurntableScreen(
             contentAlignment = Alignment.Center
         ) {
             TurntableDisc(
-                isSpinning = isStreaming,
-                coverUrl = currentTrack?.coverUrl,
+                isSpinning = isStreaming && isAudioDetected,
                 modifier = Modifier.fillMaxWidth(0.78f)
             )
         }
 
-        // Now Playing / Recognized Track Card
+        // Playback Detection Status Card
+        val statusDotColor = when {
+            !isStreaming -> colors.textMuted
+            isAudioDetected -> colors.emeraldActive
+            else -> colors.amberPrimary
+        }
+        val statusTitle = when {
+            !isStreaming -> "Bereit für Vinyl"
+            isAudioDetected -> "Wiedergabe aktiv"
+            else -> "Kein Audio-Signal (Stille)"
+        }
+        val statusSubtitle = when {
+            !isStreaming -> "Plattenspieler über USB-C Line-In"
+            isAudioDetected -> "Musik wird erkannt und an Sonos gestreamt"
+            else -> "Stream aktiv – warte auf Signal vom Plattenspieler"
+        }
+
         Surface(
-            color = VinylColors.Surface,
+            color = colors.surface,
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(14.dp))
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
         ) {
             Row(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(VinylColors.SurfaceElevated),
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(colors.surfaceElevated),
                     contentAlignment = Alignment.Center
                 ) {
-                    val coverUrl = currentTrack?.coverUrl
-                    if (!coverUrl.isNullOrBlank()) {
-                        Image(
-                            painter = rememberAsyncImagePainter(model = coverUrl),
-                            contentDescription = "Album Cover",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Album,
-                            contentDescription = null,
-                            tint = VinylColors.AmberPrimary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (isStreaming && isAudioDetected) Icons.Default.GraphicEq else Icons.Default.Album,
+                        contentDescription = null,
+                        tint = statusDotColor,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(statusDotColor)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = statusTitle,
+                            color = colors.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = currentTrack?.title ?: "Bereit für Vinyl",
-                        color = VinylColors.IvoryText,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = currentTrack?.artist ?: if (isStreaming) "Live-Stream läuft – tippe auf Song erkennen" else "Plattenspieler über USB-C Line-In",
-                        color = VinylColors.MutedText,
+                        text = statusSubtitle,
+                        color = colors.textMuted,
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (!currentTrack?.album.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        val yearSuffix = currentTrack?.releaseYear?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty()
-                        Text(
-                            text = "${currentTrack?.album}$yearSuffix",
-                            color = VinylColors.AmberPrimary,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
         }
@@ -355,69 +358,32 @@ fun TurntableScreen(
         VuMeter(
             levels = audioLevels,
             modifier = Modifier
-                .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(12.dp))
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
                 .padding(12.dp)
         )
 
-        // Primary Controls: Stream Toggle & Recognize Button
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        // Primary Stream Toggle Button
+        Button(
+            onClick = { viewModel.toggleStream() },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isStreaming) colors.warmRed else colors.amberPrimary,
+                contentColor = if (isStreaming) Color.White else if (settings.darkMode) colors.background else Color.White
+            ),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
         ) {
-            Button(
-                onClick = { viewModel.toggleStream() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isStreaming) VinylColors.WarmRed else VinylColors.AmberPrimary,
-                    contentColor = if (isStreaming) VinylColors.IvoryText else VinylColors.Background
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            ) {
-                Icon(
-                    imageVector = if (isStreaming) Icons.Default.Stop else Icons.Default.PlayArrow,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (isStreaming) "Stoppen" else "Streamen",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                )
-            }
-
-            OutlinedButton(
-                onClick = { viewModel.recognizeCurrentSong() },
-                enabled = isStreaming && recognitionState !is RecognitionState.Recognizing,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            ) {
-                if (recognitionState is RecognitionState.Recognizing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = VinylColors.AmberPrimary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Erkennt...", color = VinylColors.IvoryText, fontSize = 14.sp)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.GraphicEq,
-                        contentDescription = null,
-                        tint = if (isStreaming) VinylColors.AmberPrimary else VinylColors.MutedText
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Song erkennen",
-                        color = if (isStreaming) VinylColors.IvoryText else VinylColors.MutedText,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
-            }
+            Icon(
+                imageVector = if (isStreaming) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (isStreaming) "Stream stoppen" else "Stream starten",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
         }
 
         // Sonos Volume Control
@@ -425,15 +391,15 @@ fun TurntableScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(12.dp))
-                .background(VinylColors.Surface)
-                .border(1.dp, VinylColors.BorderSubtle, RoundedCornerShape(12.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
                 .padding(horizontal = 14.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                 contentDescription = "Lautstärke",
-                tint = VinylColors.AmberPrimary,
+                tint = colors.amberPrimary,
                 modifier = Modifier.size(20.dp)
             )
             Slider(
@@ -441,9 +407,9 @@ fun TurntableScreen(
                 onValueChange = { viewModel.setSonosVolume(it.toInt()) },
                 valueRange = 0f..100f,
                 colors = SliderDefaults.colors(
-                    thumbColor = VinylColors.AmberPrimary,
-                    activeTrackColor = VinylColors.AmberPrimary,
-                    inactiveTrackColor = VinylColors.SurfaceElevated
+                    thumbColor = colors.amberPrimary,
+                    activeTrackColor = colors.amberPrimary,
+                    inactiveTrackColor = colors.surfaceElevated
                 ),
                 modifier = Modifier
                     .weight(1f)
@@ -451,7 +417,7 @@ fun TurntableScreen(
             )
             Text(
                 text = "$volume%",
-                color = VinylColors.MutedText,
+                color = colors.textMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.width(36.dp)
             )

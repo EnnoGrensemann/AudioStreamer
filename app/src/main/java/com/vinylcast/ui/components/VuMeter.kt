@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vinylcast.model.AudioLevels
-import com.vinylcast.ui.theme.VinylColors
+import com.vinylcast.ui.theme.VinylTheme
 import kotlin.math.log10
 
 @Composable
@@ -29,12 +29,12 @@ fun VuMeter(
     levels: AudioLevels,
     modifier: Modifier = Modifier
 ) {
+    val colors = VinylTheme.colors
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(VinylColors.Surface)
-            .let { it },
+            .background(colors.surface),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         VuChannelRow(label = "L", rms = levels.leftRms)
@@ -44,7 +44,7 @@ fun VuMeter(
 
 @Composable
 private fun VuChannelRow(label: String, rms: Float) {
-    // Convert linear RMS to perceptual 0..1 scale (-54 dB to 0 dB)
+    val colors = VinylTheme.colors
     val db = if (rms > 0.0001f) 20f * log10(rms) else -60f
     val normalized = ((db + 54f) / 54f).coerceIn(0f, 1f)
     val animatedLevel by animateFloatAsState(
@@ -63,7 +63,7 @@ private fun VuChannelRow(label: String, rms: Float) {
     ) {
         Text(
             text = label,
-            color = VinylColors.MutedText,
+            color = colors.textMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(14.dp)
@@ -75,10 +75,10 @@ private fun VuChannelRow(label: String, rms: Float) {
             for (i in 0 until segments) {
                 val active = i < litCount
                 val color = when {
-                    !active -> VinylColors.SurfaceElevated
-                    i >= segments - 4 -> VinylColors.WarmRed
-                    i >= segments - 9 -> VinylColors.AmberPrimary
-                    else -> VinylColors.EmeraldActive
+                    !active -> colors.surfaceElevated
+                    i >= segments - 4 -> colors.warmRed
+                    i >= segments - 9 -> colors.amberPrimary
+                    else -> colors.emeraldActive
                 }
                 Box(
                     modifier = Modifier

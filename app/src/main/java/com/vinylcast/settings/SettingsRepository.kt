@@ -17,36 +17,24 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class SettingsRepository(private val context: Context) {
 
     private object Keys {
-        val ACR_HOST = stringPreferencesKey("acr_host")
-        val ACR_ACCESS_KEY = stringPreferencesKey("acr_access_key")
-        val ACR_ACCESS_SECRET = stringPreferencesKey("acr_access_secret")
         val STREAM_PORT = intPreferencesKey("stream_port")
         val PREFERRED_INPUT_ID = intPreferencesKey("preferred_input_id")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val DARK_MODE = booleanPreferencesKey("dark_mode")
         val LAST_SONOS_UDN = stringPreferencesKey("last_sonos_udn")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
-            acrHost = prefs[Keys.ACR_HOST] ?: "",
-            acrAccessKey = prefs[Keys.ACR_ACCESS_KEY] ?: "",
-            acrAccessSecret = prefs[Keys.ACR_ACCESS_SECRET] ?: "",
             streamPort = prefs[Keys.STREAM_PORT] ?: 8765,
             preferredInputDeviceId = prefs[Keys.PREFERRED_INPUT_ID]?.takeIf { it > 0 },
-            keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false
+            keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false,
+            darkMode = prefs[Keys.DARK_MODE] ?: true
         )
     }
 
     val lastSonosUdnFlow: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[Keys.LAST_SONOS_UDN]
-    }
-
-    suspend fun updateAcrCredentials(host: String, accessKey: String, accessSecret: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.ACR_HOST] = host.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
-            prefs[Keys.ACR_ACCESS_KEY] = accessKey.trim()
-            prefs[Keys.ACR_ACCESS_SECRET] = accessSecret.trim()
-        }
     }
 
     suspend fun updateStreamPort(port: Int) {
@@ -68,6 +56,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateKeepScreenOn(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.KEEP_SCREEN_ON] = enabled
+        }
+    }
+
+    suspend fun updateDarkMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DARK_MODE] = enabled
         }
     }
 

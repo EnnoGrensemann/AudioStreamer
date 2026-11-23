@@ -1,6 +1,5 @@
 package com.vinylcast.sonos
 
-import com.vinylcast.model.TrackInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,17 +22,13 @@ class SonosXmlBuilderTest {
     }
 
     @Test
-    fun `buildDidlLiteMetadata escapes XML characters and includes cover URL`() {
-        val track = TrackInfo(
-            title = "Echoes & Waves",
-            artist = "Pink Floyd",
-            album = "Meddle",
-            coverUrl = "https://example.com/cover.jpg?a=1&b=2"
+    fun `buildDidlLiteMetadata escapes XML characters`() {
+        val didl = SonosXmlBuilder.buildDidlLiteMetadata(
+            streamUrl = "http://192.168.1.10:8765/stream.wav",
+            title = "Vinyl & HiFi"
         )
-        val didl = SonosXmlBuilder.buildDidlLiteMetadata("http://192.168.1.10:8765/stream.wav", track)
 
-        assertTrue(didl.contains("<dc:title>Echoes &amp; Waves</dc:title>"))
-        assertTrue(didl.contains("<dc:creator>Pink Floyd</dc:creator>"))
-        assertTrue(didl.contains("<upnp:albumArtURI>https://example.com/cover.jpg?a=1&amp;b=2</upnp:albumArtURI>"))
+        assertTrue(didl.contains("<dc:title>Vinyl &amp; HiFi</dc:title>"))
+        assertTrue(didl.contains("<dc:creator>Plattenspieler</dc:creator>"))
     }
 }

@@ -1,7 +1,5 @@
 package com.vinylcast.sonos
 
-import com.vinylcast.model.TrackInfo
-
 object SonosXmlBuilder {
 
     fun escapeXml(input: String): String {
@@ -15,23 +13,17 @@ object SonosXmlBuilder {
 
     fun buildDidlLiteMetadata(
         streamUrl: String,
-        track: TrackInfo?
+        title: String = "Vinyl Line-In",
+        artist: String = "Plattenspieler",
+        album: String = "VinylCast"
     ): String {
-        val title = escapeXml(track?.title?.takeIf { it.isNotBlank() } ?: "Vinyl Line-In")
-        val artist = escapeXml(track?.artist?.takeIf { it.isNotBlank() } ?: "Plattenspieler")
-        val album = escapeXml(track?.album?.takeIf { it.isNotBlank() } ?: "VinylCast")
-        val albumArtTag = track?.coverUrl?.takeIf { it.isNotBlank() }?.let {
-            "<upnp:albumArtURI>${escapeXml(it)}</upnp:albumArtURI>"
-        } ?: ""
-
         return """
             <DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">
                 <item id="-1" parentID="-1" restricted="true">
                     <res protocolInfo="http-get:*:audio/wav:*">${escapeXml(streamUrl)}</res>
-                    <dc:title>$title</dc:title>
-                    <dc:creator>$artist</dc:creator>
-                    <upnp:album>$album</upnp:album>
-                    $albumArtTag
+                    <dc:title>${escapeXml(title)}</dc:title>
+                    <dc:creator>${escapeXml(artist)}</dc:creator>
+                    <upnp:album>${escapeXml(album)}</upnp:album>
                     <upnp:class>object.item.audioItem.audioBroadcast</upnp:class>
                 </item>
             </DIDL-Lite>

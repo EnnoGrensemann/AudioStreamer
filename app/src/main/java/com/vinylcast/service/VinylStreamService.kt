@@ -19,6 +19,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.vinylcast.MainActivity
 import com.vinylcast.R
+import com.vinylcast.audio.AudioSignalDetector
 import com.vinylcast.audio.AudioStreamServer
 import com.vinylcast.audio.UsbAudioDeviceHelper
 import com.vinylcast.audio.WavStreamHeader
@@ -73,6 +74,7 @@ class VinylStreamService : Service() {
     private var captureThread: Thread? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private val signalDetector = AudioSignalDetector()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -105,7 +107,7 @@ class VinylStreamService : Service() {
         if (isRunning.getAndSet(true)) return
 
         acquireLocks()
-        StreamController.rollingPcmBuffer.clear()
+        signalDetector.reset()
 
         val server = AudioStreamServer(port).also {
             it.start()
@@ -155,8 +157,7 @@ class VinylStreamService : Service() {
                     if (read > 0) {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
                         server.broadcastPcm(validBytes)
-                        StreamController.rollingPcmBuffer.write(validBytes, read)
-                        updateVuLevels(validBytes, read)
+                        updateVuAndSignal(validBytes, read)
                     } else if (read < 0) {
                         Log.w(TAG, "AudioRecord read error: $read")
                         break
@@ -188,7 +189,7 @@ class VinylStreamService : Service() {
         }
     }
 
-    private fun updateVuLevels(pcm: ByteArray, length: Int) {
+    private fun updateVuAndSignal(pcm: ByteArray, length: Int) {
         val samples = length / 4 // 2 channels * 2 bytes
         if (samples <= 0) return
         val bb = ByteBuffer.wrap(pcm, 0, length).order(ByteOrder.LITTLE_ENDIAN)
@@ -202,11 +203,13 @@ class VinylStreamService : Service() {
         }
         val rmsL = sqrt(sumSqL / samples).toFloat().coerceIn(0f, 1f)
         val rmsR = sqrt(sumSqR / samples).toFloat().coerceIn(0f, 1f)
-        StreamController.updateLevels(rmsL, rmsR)
+        val detected = signalDetector.update(rmsL, rmsR)
+        StreamController.updateLevels(rmsL, rmsR, detected)
     }
 
     private fun stopCaptureAndServer() {
         if (!isRunning.getAndSet(false)) return
+        signalDetector.reset()
         StreamController.setStreaming(false, null)
         StreamController.setAudioCapturing(false)
         httpServer?.stop()
@@ -219,7 +222,7 @@ class VinylStreamService : Service() {
     private fun acquireLocks() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VinylCast::StreamWakeLock").apply {
-            acquire(6 * 60 * 60 * 1000L) // up to 6 hours
+            acquire(6 * 60 * 60 * 1000L)
         }
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         @Suppress("DEPRECATION")
@@ -266,7 +269,7 @@ class VinylStreamService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("VinylCast")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_vinyl_launcher)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(openIntent)
             .addAction(0, "Stopp", stopIntent)
             .setOngoing(true)

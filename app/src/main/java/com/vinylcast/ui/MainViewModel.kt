@@ -6,9 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.vinylcast.audio.UsbAudioDeviceHelper
 import com.vinylcast.model.AppSettings
 import com.vinylcast.model.AudioInputDevice
-import com.vinylcast.model.RecognitionState
 import com.vinylcast.model.SonosDevice
-import com.vinylcast.recognition.AcrCloudRecognizer
 import com.vinylcast.service.StreamController
 import com.vinylcast.service.VinylStreamService
 import com.vinylcast.settings.SettingsRepository
@@ -29,7 +27,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val usbHelper = UsbAudioDeviceHelper(application)
     private val sonosDiscovery = SonosSsdpDiscovery(application)
     private val sonosClient = SonosUpnpClient()
-    private val recognizer = AcrCloudRecognizer()
 
     val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -38,8 +35,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, usbHelper.getInputDevices())
 
     val isStreaming = StreamController.isStreaming
+    val isAudioDetected = StreamController.isAudioDetected
     val audioLevels = StreamController.audioLevels
-    val currentTrack = StreamController.currentTrack
     val lastError = StreamController.lastError
 
     private val _sonosDevices = MutableStateFlow<List<SonosDevice>>(emptyList())
@@ -53,9 +50,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _sonosVolume = MutableStateFlow(35)
     val sonosVolume: StateFlow<Int> = _sonosVolume.asStateFlow()
-
-    private val _recognitionState = MutableStateFlow<RecognitionState>(RecognitionState.Idle)
-    val recognitionState: StateFlow<RecognitionState> = _recognitionState.asStateFlow()
 
     init {
         discoverSonos()
@@ -114,7 +108,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         viewModelScope.launch {
-            // Wait briefly for the local HTTP server to bind and expose its LAN URL
             var url: String? = null
             repeat(20) {
                 url = StreamController.streamUrl.value
@@ -128,7 +121,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            sonosClient.startStream(target, streamUrl, currentTrack.value)
+            sonosClient.startStream(target, streamUrl)
                 .onFailure { err ->
                     StreamController.setError("Sonos Start fehlgeschlagen: ${err.message}")
                     VinylStreamService.stopService(getApplication())
@@ -155,36 +148,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun recognizeCurrentSong() {
-        if (_recognitionState.value is RecognitionState.Recognizing) return
-        viewModelScope.launch {
-            _recognitionState.value = RecognitionState.Recognizing
-            val snippet = StreamController.rollingPcmBuffer.snapshot()
-            val result = recognizer.recognize(snippet, settings.value)
-            result.onSuccess { track ->
-                StreamController.setCurrentTrack(track)
-                _recognitionState.value = RecognitionState.Success(track)
-                // Push recognized title & album cover to Sonos Playbar metadata
-                val target = _selectedSonos.value
-                val url = StreamController.streamUrl.value
-                if (target != null && url != null && isStreaming.value) {
-                    sonosClient.updateMetadata(target, url, track)
-                }
-            }.onFailure { err ->
-                _recognitionState.value = RecognitionState.Error(err.message ?: "Erkennung fehlgeschlagen")
-            }
-        }
-    }
-
     fun toggleKeepScreenOn() {
         viewModelScope.launch {
             settingsRepo.updateKeepScreenOn(!settings.value.keepScreenOn)
         }
     }
 
-    fun saveAcrCredentials(host: String, key: String, secret: String) {
+    fun toggleDarkMode() {
         viewModelScope.launch {
-            settingsRepo.updateAcrCredentials(host, key, secret)
+            settingsRepo.updateDarkMode(!settings.value.darkMode)
         }
     }
 
@@ -202,8 +174,5 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissError() {
         StreamController.setError(null)
-        if (_recognitionState.value is RecognitionState.Error) {
-            _recognitionState.value = RecognitionState.Idle
-        }
     }
 }
