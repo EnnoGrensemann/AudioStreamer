@@ -19,6 +19,12 @@ object StreamController {
     private val _audioLevels = MutableStateFlow(AudioLevels())
     val audioLevels: StateFlow<AudioLevels> = _audioLevels.asStateFlow()
 
+    private val _peakDb = MutableStateFlow(-60f)
+    val peakDb: StateFlow<Float> = _peakDb.asStateFlow()
+
+    private val _captureInfo = MutableStateFlow("")
+    val captureInfo: StateFlow<String> = _captureInfo.asStateFlow()
+
     private val _streamUrl = MutableStateFlow<String?>(null)
     val streamUrl: StateFlow<String?> = _streamUrl.asStateFlow()
 
@@ -33,20 +39,27 @@ object StreamController {
         _streamUrl.value = if (streaming) url else null
         if (!streaming) {
             _isAudioDetected.value = false
+            _peakDb.value = -60f
+            _captureInfo.value = ""
         }
     }
 
-    fun setAudioCapturing(capturing: Boolean) {
+    fun setAudioCapturing(capturing: Boolean, info: String = "") {
         _isAudioCapturing.value = capturing
+        if (info.isNotBlank()) {
+            _captureInfo.value = info
+        }
         if (!capturing) {
             _audioLevels.value = AudioLevels()
             _isAudioDetected.value = false
+            _peakDb.value = -60f
         }
     }
 
-    fun updateLevels(left: Float, right: Float, signalDetected: Boolean) {
+    fun updateLevels(left: Float, right: Float, signalDetected: Boolean, db: Float) {
         _audioLevels.value = AudioLevels(left, right)
         _isAudioDetected.value = signalDetected
+        _peakDb.value = db
     }
 
     fun setActiveSonos(device: SonosDevice?) {

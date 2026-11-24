@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -22,11 +23,12 @@ import com.vinylcast.R
 import com.vinylcast.audio.AudioSignalDetector
 import com.vinylcast.audio.AudioStreamServer
 import com.vinylcast.audio.UsbAudioDeviceHelper
-import com.vinylcast.audio.WavStreamHeader
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.log10
+import kotlin.math.max
 import kotlin.math.sqrt
 
 class VinylStreamService : Service() {
@@ -74,7 +76,7 @@ class VinylStreamService : Service() {
     private var captureThread: Thread? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
-    private val signalDetector = AudioSignalDetector()
+    private val signalDetector = AudioSignalDetector(thresholdRms = 0.002f)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -109,7 +111,14 @@ class VinylStreamService : Service() {
         acquireLocks()
         signalDetector.reset()
 
-        val server = AudioStreamServer(port).also {
+        val usbHelper = UsbAudioDeviceHelper(this)
+        val targetDevice = usbHelper.findBestInputDeviceInfo(preferredDeviceId)
+
+        val sampleRate = chooseSampleRate(targetDevice)
+        val isStereo = chooseStereo(targetDevice)
+        val channelConfig = if (isStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+
+        val server = AudioStreamServer(port = port, sampleRate = sampleRate).also {
             it.start()
             httpServer = it
         }
@@ -119,47 +128,50 @@ class VinylStreamService : Service() {
         StreamController.setStreaming(true, url)
 
         captureThread = thread(name = "VinylAudioCapture", priority = Thread.MAX_PRIORITY) {
-            val sampleRate = WavStreamHeader.SAMPLE_RATE
-            val channelConfig = AudioFormat.CHANNEL_IN_STEREO
             val encoding = AudioFormat.ENCODING_PCM_16BIT
             val minBuffer = AudioRecord.getMinBufferSize(sampleRate, channelConfig, encoding)
                 .coerceAtLeast(8192)
             val bufferSize = minBuffer * 2
 
-            var recorder = createAudioRecord(MediaRecorder.AudioSource.UNPROCESSED, sampleRate, channelConfig, encoding, bufferSize)
-            if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED) {
-                recorder?.release()
-                recorder = createAudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, channelConfig, encoding, bufferSize)
-            }
-
-            if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED) {
+            val recorder = createRecorderWithFallback(sampleRate, channelConfig, encoding, bufferSize)
+            if (recorder == null) {
                 Log.e(TAG, "AudioRecord initialization failed")
-                StreamController.setError("Audio-Eingang konnte nicht initialisiert werden.")
+                StreamController.setError("Audio-Eingang konnte nicht initialisiert werden ($sampleRate Hz).")
                 stopCaptureAndServer()
                 stopSelf()
                 return@thread
             }
 
-            val usbHelper = UsbAudioDeviceHelper(this)
-            val targetDevice = usbHelper.findBestInputDeviceInfo(preferredDeviceId)
             if (targetDevice != null) {
                 val routed = recorder.setPreferredDevice(targetDevice)
                 Log.i(TAG, "Preferred audio input: ${targetDevice.productName} (routed=$routed)")
             }
 
+            val devName = targetDevice?.productName?.toString()?.take(18) ?: "Standard"
+            val chLabel = if (isStereo) "Stereo" else "Mono"
+            val infoText = "${sampleRate / 1000} kHz · $chLabel · $devName"
+
             val chunk = ByteArray(4096)
             try {
                 recorder.startRecording()
-                StreamController.setAudioCapturing(true)
+                if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    StreamController.setError("AudioRecord startet nicht (Berechtigung / USB-Gerät prüfen).")
+                    stopCaptureAndServer()
+                    stopSelf()
+                    return@thread
+                }
+                StreamController.setAudioCapturing(true, infoText)
 
                 while (isRunning.get()) {
                     val read = recorder.read(chunk, 0, chunk.size)
                     if (read > 0) {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
-                        server.broadcastPcm(validBytes)
-                        updateVuAndSignal(validBytes, read)
+                        val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
+                        server.broadcastPcm(stereoBytes)
+                        updateVuAndSignal(stereoBytes, stereoBytes.size)
                     } else if (read < 0) {
                         Log.w(TAG, "AudioRecord read error: $read")
+                        StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
                         break
                     }
                 }
@@ -174,23 +186,73 @@ class VinylStreamService : Service() {
         }
     }
 
+    private fun chooseSampleRate(device: AudioDeviceInfo?): Int {
+        val rates = device?.sampleRates?.toList().orEmpty()
+        return when {
+            48000 in rates -> 48000
+            44100 in rates -> 44100
+            rates.isNotEmpty() -> rates.first()
+            else -> 48000
+        }
+    }
+
+    private fun chooseStereo(device: AudioDeviceInfo?): Boolean {
+        val counts = device?.channelCounts?.toList().orEmpty()
+        return counts.isEmpty() || 2 in counts
+    }
+
     @SuppressLint("MissingPermission")
-    private fun createAudioRecord(
-        source: Int,
+    private fun createRecorderWithFallback(
         sampleRate: Int,
         channelConfig: Int,
         encoding: Int,
         bufferSize: Int
     ): AudioRecord? {
-        return try {
-            AudioRecord(source, sampleRate, channelConfig, encoding, bufferSize)
-        } catch (_: Exception) {
-            null
+        val sources = listOf(
+            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.DEFAULT,
+            MediaRecorder.AudioSource.UNPROCESSED
+        )
+        for (src in sources) {
+            val rec = try {
+                AudioRecord.Builder()
+                    .setAudioSource(src)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(channelConfig)
+                            .setEncoding(encoding)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(bufferSize)
+                    .build()
+            } catch (_: Exception) {
+                null
+            }
+            if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) {
+                return rec
+            }
+            rec?.release()
         }
+        return null
+    }
+
+    private fun monoToStereo(mono: ByteArray): ByteArray {
+        val samples = mono.size / 2
+        val stereo = ByteArray(samples * 4)
+        for (i in 0 until samples) {
+            val lo = mono[i * 2]
+            val hi = mono[i * 2 + 1]
+            stereo[i * 4] = lo
+            stereo[i * 4 + 1] = hi
+            stereo[i * 4 + 2] = lo
+            stereo[i * 4 + 3] = hi
+        }
+        return stereo
     }
 
     private fun updateVuAndSignal(pcm: ByteArray, length: Int) {
-        val samples = length / 4 // 2 channels * 2 bytes
+        val samples = length / 4
         if (samples <= 0) return
         val bb = ByteBuffer.wrap(pcm, 0, length).order(ByteOrder.LITTLE_ENDIAN)
         var sumSqL = 0.0
@@ -203,8 +265,10 @@ class VinylStreamService : Service() {
         }
         val rmsL = sqrt(sumSqL / samples).toFloat().coerceIn(0f, 1f)
         val rmsR = sqrt(sumSqR / samples).toFloat().coerceIn(0f, 1f)
+        val peak = max(rmsL, rmsR)
+        val db = if (peak > 0.0001f) 20f * log10(peak) else -60f
         val detected = signalDetector.update(rmsL, rmsR)
-        StreamController.updateLevels(rmsL, rmsR, detected)
+        StreamController.updateLevels(rmsL, rmsR, detected, db)
     }
 
     private fun stopCaptureAndServer() {

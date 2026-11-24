@@ -16,7 +16,10 @@ import kotlin.concurrent.thread
 /**
  * Lightweight local HTTP server streaming live PCM audio as continuous WAV to Sonos.
  */
-class AudioStreamServer(private val port: Int = 8765) {
+class AudioStreamServer(
+    private val port: Int = 8765,
+    private val sampleRate: Int = WavStreamHeader.SAMPLE_RATE
+) {
 
     companion object {
         private const val TAG = "AudioStreamServer"
@@ -88,7 +91,7 @@ class AudioStreamServer(private val port: Int = 8765) {
                 }
 
                 writeHeaders(out)
-                out.write(WavStreamHeader.createHeader())
+                out.write(WavStreamHeader.createHeader(sampleRate = sampleRate))
                 out.flush()
 
                 connection = ClientConnection(socket)
