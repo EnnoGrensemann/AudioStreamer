@@ -320,6 +320,28 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            val usbDiag by viewModel.usbDiagnostic.collectAsState()
+            Button(
+                onClick = { viewModel.inspectAndSwitchUsbLineIn() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.surfaceElevated,
+                    contentColor = colors.textPrimary
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            ) {
+                Text("USB-Line-In Hardware prüfen / umschalten")
+            }
+            if (!usbDiag.isNullOrBlank()) {
+                Text(
+                    text = usbDiag.orEmpty(),
+                    color = colors.textMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

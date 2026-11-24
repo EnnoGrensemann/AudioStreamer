@@ -25,8 +25,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepo = SettingsRepository(application)
     private val usbHelper = UsbAudioDeviceHelper(application)
+    private val usbControlHelper = com.vinylcast.audio.UsbAudioControlHelper(application)
     private val sonosDiscovery = SonosSsdpDiscovery(application)
     private val sonosClient = SonosUpnpClient()
+
+    private val _usbDiagnostic = MutableStateFlow<String?>(null)
+    val usbDiagnostic: StateFlow<String?> = _usbDiagnostic.asStateFlow()
 
     val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -186,6 +190,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setGainMultiplier(gain: Float) {
         viewModelScope.launch {
             settingsRepo.updateGainMultiplier(gain)
+        }
+    }
+
+    fun inspectAndSwitchUsbLineIn() {
+        viewModelScope.launch {
+            _usbDiagnostic.value = "Prüfe USB-Gerät..."
+            _usbDiagnostic.value = usbControlHelper.requestPermissionAndInspect()
         }
     }
 

@@ -301,8 +301,8 @@ fun TurntableScreen(
         val sonosLink = if (connectedClients > 0) "Sonos verbunden" else "Warte auf Sonos..."
         val statusSubtitle = when {
             !isStreaming -> "Plattenspieler über USB-C Line-In"
-            captureInfo.isNotBlank() -> "$sonosLink · $captureInfo · $dbText"
-            else -> "$sonosLink · $dbText"
+            captureInfo.isNotBlank() -> "$dbText · $sonosLink · $captureInfo"
+            else -> "$dbText · $sonosLink"
         }
 
         Surface(
