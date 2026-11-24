@@ -107,16 +107,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentSettings = settings.value
         StreamController.setError(null)
 
-        VinylStreamService.startService(
-            context = getApplication(),
-            port = currentSettings.streamPort,
-            preferredDeviceId = currentSettings.preferredInputDeviceId,
-            roomName = target.roomName,
-            audioSource = currentSettings.audioSource.name,
-            gainMultiplier = currentSettings.gainMultiplier
-        )
-
         viewModelScope.launch {
+            if (currentSettings.preferredInputDeviceId == null) {
+                usbControlHelper.findUsbAudioDevice()?.let { usbDev ->
+                    usbControlHelper.ensureUsbPermission(usbDev)
+                }
+            }
+
+            VinylStreamService.startService(
+                context = getApplication(),
+                port = currentSettings.streamPort,
+                preferredDeviceId = currentSettings.preferredInputDeviceId,
+                roomName = target.roomName,
+                audioSource = currentSettings.audioSource.name,
+                gainMultiplier = currentSettings.gainMultiplier
+            )
+
             var url: String? = null
             repeat(20) {
                 url = StreamController.streamUrl.value

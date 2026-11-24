@@ -80,6 +80,8 @@ class VinylStreamService : Service() {
     private val isRunning = AtomicBoolean(false)
     private var httpServer: AudioStreamServer? = null
     private var captureThread: Thread? = null
+    private var usbConnection: android.hardware.usb.UsbDeviceConnection? = null
+    private var usbStreamingInterface: android.hardware.usb.UsbInterface? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private val signalDetector = AudioSignalDetector(thresholdRms = 0.002f)
@@ -126,6 +128,32 @@ class VinylStreamService : Service() {
 
         val usbHelper = UsbAudioDeviceHelper(this)
         val targetDevice = usbHelper.findBestInputDeviceInfo(preferredDeviceId)
+
+        // Try direct USB Isochronous Line-In capture first when USB device is selected/auto
+        val usbControl = com.vinylcast.audio.UsbAudioControlHelper(this)
+        val usbDev = if (preferredDeviceId == null || targetDevice?.let {
+                it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+            } == true
+        ) usbControl.findUsbAudioDevice() else null
+
+        if (usbDev != null && usbControl.hasUsbPermission(usbDev)) {
+            val usbManager = getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+            val conn = usbManager.openDevice(usbDev)
+            if (conn != null) {
+                val cfg = usbControl.findLineInStreamConfig(conn, usbDev)
+                val androidIntf = cfg?.let {
+                    usbControl.findAndroidUsbInterface(usbDev, it.streamingInterfaceNum, it.alternateSetting)
+                }
+                if (cfg != null && androidIntf != null && conn.claimInterface(androidIntf, true)) {
+                    conn.setInterface(androidIntf)
+                    usbControl.unmuteAndConfigureLineIn(conn, cfg)
+                    startUsbIsoStreaming(port, cfg, conn, androidIntf, gainMultiplier)
+                    return
+                } else {
+                    conn.close()
+                }
+            }
+        }
 
         val sampleRate = chooseSampleRate(targetDevice)
         val isStereo = chooseStereo(targetDevice)
@@ -341,15 +369,82 @@ class VinylStreamService : Service() {
         StreamController.updateLevels(rmsL, rmsR, detected, db)
     }
 
+    private fun startUsbIsoStreaming(
+        port: Int,
+        cfg: com.vinylcast.audio.UsbAudioControlHelper.LineInStreamConfig,
+        conn: android.hardware.usb.UsbDeviceConnection,
+        intf: android.hardware.usb.UsbInterface,
+        gainMultiplier: Float
+    ) {
+        usbConnection = conn
+        usbStreamingInterface = intf
+
+        val server = AudioStreamServer(
+            port = port,
+            sampleRate = cfg.sampleRate,
+            onClientCountChanged = { count -> StreamController.setConnectedClients(count) }
+        ).also {
+            it.start()
+            httpServer = it
+        }
+
+        val ip = server.getLocalWifiIpAddress()
+        val url = if (ip != null) "http://$ip:$port/stream.wav" else null
+        StreamController.setStreaming(true, url)
+
+        val chLabel = if (cfg.channels == 2) "Stereo" else "Mono"
+        val infoText = "${cfg.sampleRate / 1000} kHz · $chLabel · USB Line-In (Direkt)"
+        StreamController.setAudioCapturing(true, infoText)
+        com.vinylcast.util.DebugLog.log("USB-ISO", "Starte Direkt-Line-In: $infoText ep=0x${cfg.endpointAddress.toString(16)}")
+
+        captureThread = thread(name = "VinylUsbIsoCapture", priority = Thread.MAX_PRIORITY) {
+            val captureStartedAtMs = System.currentTimeMillis()
+            var lastPcmLogMs = 0L
+
+            val res = com.vinylcast.audio.UsbIsoNative.startIsoCapture(
+                fd = conn.fileDescriptor,
+                endpointAddr = cfg.endpointAddress,
+                maxPacketSize = cfg.maxPacketSize,
+                subframeSize = cfg.subframeSize,
+                callback = object : com.vinylcast.audio.UsbIsoNative.PcmCallback {
+                    override fun onPcmData(data: ByteArray, length: Int) {
+                        if (!isRunning.get() || length <= 0) return
+                        val validBytes = data.copyOf(length)
+                        val stereoBytes = if (cfg.channels == 2) validBytes else monoToStereo(validBytes)
+                        val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
+                        server.broadcastPcm(gainedBytes)
+                        val now = System.currentTimeMillis()
+                        val detectSignal = now - captureStartedAtMs > 450L
+                        updateVuAndSignal(gainedBytes, gainedBytes.size, detectSignal)
+                        if (now - lastPcmLogMs >= 1500L) {
+                            lastPcmLogMs = now
+                            logPcmStats(gainedBytes)
+                        }
+                    }
+                }
+            )
+            com.vinylcast.util.DebugLog.log("USB-ISO", "Beendet mit Code $res")
+            StreamController.setAudioCapturing(false)
+        }
+    }
+
     private fun stopCaptureAndServer() {
         if (!isRunning.getAndSet(false)) return
         signalDetector.reset()
+        runCatching { com.vinylcast.audio.UsbIsoNative.stopIsoCapture() }
         StreamController.setStreaming(false, null)
         StreamController.setAudioCapturing(false)
         httpServer?.stop()
         httpServer = null
+        captureThread?.join(500)
         captureThread?.interrupt()
         captureThread = null
+        usbStreamingInterface?.let { intf ->
+            runCatching { usbConnection?.releaseInterface(intf) }
+        }
+        runCatching { usbConnection?.close() }
+        usbStreamingInterface = null
+        usbConnection = null
         releaseLocks()
     }
 
