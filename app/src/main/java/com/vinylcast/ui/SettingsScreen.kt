@@ -266,6 +266,62 @@ fun SettingsScreen(
             }
         }
 
+        // Gain & AudioSource Section
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Eingangs-Verstärkung (Gain): ${settings.gainMultiplier.toInt()}x",
+                color = colors.amberPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            androidx.compose.material3.Slider(
+                value = settings.gainMultiplier,
+                onValueChange = { viewModel.setGainMultiplier(it.toInt().toFloat().coerceIn(1f, 16f)) },
+                valueRange = 1f..16f,
+                steps = 14,
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = colors.amberPrimary,
+                    activeTrackColor = colors.amberPrimary,
+                    inactiveTrackColor = colors.surfaceElevated
+                )
+            )
+            Text(
+                text = "Audio-Quelle (Android Routing)",
+                color = colors.amberPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            com.vinylcast.model.AudioSourceOption.entries.forEach { option ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.selectAudioSource(option) }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = settings.audioSource == option,
+                        onClick = { viewModel.selectAudioSource(option) },
+                        colors = RadioButtonDefaults.colors(selectedColor = colors.amberPrimary)
+                    )
+                    Text(
+                        text = option.label,
+                        color = colors.textPrimary,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }

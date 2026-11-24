@@ -1,5 +1,13 @@
 package com.vinylcast.model
 
+enum class AudioSourceOption(val label: String) {
+    AUTO("Automatisch (MIC → Default)"),
+    MIC("Mikrofon (MIC)"),
+    UNPROCESSED("Unbearbeitet / Line-In (UNPROCESSED)"),
+    CAMCORDER("Camcorder (CAMCORDER)"),
+    DEFAULT("System-Standard (DEFAULT)")
+}
+
 data class AudioInputDevice(
     val id: Int,
     val name: String,
@@ -26,5 +34,7 @@ data class AppSettings(
     val streamPort: Int = 8765,
     val preferredInputDeviceId: Int? = null,
     val keepScreenOn: Boolean = false,
-    val darkMode: Boolean = true
+    val darkMode: Boolean = true,
+    val audioSource: AudioSourceOption = AudioSourceOption.AUTO,
+    val gainMultiplier: Float = 1f
 )

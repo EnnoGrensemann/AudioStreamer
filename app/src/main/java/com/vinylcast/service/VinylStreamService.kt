@@ -43,18 +43,24 @@ class VinylStreamService : Service() {
         const val EXTRA_PORT = "extra_port"
         const val EXTRA_DEVICE_ID = "extra_device_id"
         const val EXTRA_ROOM_NAME = "extra_room_name"
+        const val EXTRA_AUDIO_SOURCE = "extra_audio_source"
+        const val EXTRA_GAIN = "extra_gain"
 
         fun startService(
             context: Context,
             port: Int,
             preferredDeviceId: Int?,
-            roomName: String?
+            roomName: String?,
+            audioSource: String,
+            gainMultiplier: Float
         ) {
             val intent = Intent(context, VinylStreamService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_PORT, port)
                 putExtra(EXTRA_DEVICE_ID, preferredDeviceId ?: -1)
                 putExtra(EXTRA_ROOM_NAME, roomName)
+                putExtra(EXTRA_AUDIO_SOURCE, audioSource)
+                putExtra(EXTRA_GAIN, gainMultiplier)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -97,15 +103,22 @@ class VinylStreamService : Service() {
                 val port = intent.getIntExtra(EXTRA_PORT, 8765)
                 val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1).takeIf { it > 0 }
                 val roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: "Sonos Playbar"
+                val sourceName = intent.getStringExtra(EXTRA_AUDIO_SOURCE) ?: "AUTO"
+                val gain = intent.getFloatExtra(EXTRA_GAIN, 1f).coerceIn(1f, 16f)
                 startForeground(NOTIFICATION_ID, buildNotification("Streamt Line-In an $roomName"))
-                startCaptureAndServer(port, deviceId)
+                startCaptureAndServer(port, deviceId, sourceName, gain)
             }
         }
         return START_STICKY
     }
 
     @SuppressLint("MissingPermission")
-    private fun startCaptureAndServer(port: Int, preferredDeviceId: Int?) {
+    private fun startCaptureAndServer(
+        port: Int,
+        preferredDeviceId: Int?,
+        audioSourceName: String,
+        gainMultiplier: Float
+    ) {
         if (isRunning.getAndSet(true)) return
 
         acquireLocks()
@@ -137,7 +150,7 @@ class VinylStreamService : Service() {
                 .coerceAtLeast(8192)
             val bufferSize = minBuffer * 2
 
-            val recorder = createRecorderWithFallback(sampleRate, channelConfig, encoding, bufferSize)
+            val recorder = createRecorderWithFallback(sampleRate, channelConfig, encoding, bufferSize, audioSourceName)
             if (recorder == null) {
                 Log.e(TAG, "AudioRecord initialization failed")
                 StreamController.setError("Audio-Eingang konnte nicht initialisiert werden ($sampleRate Hz).")
@@ -172,10 +185,11 @@ class VinylStreamService : Service() {
                     if (read > 0) {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
                         val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
-                        server.broadcastPcm(stereoBytes)
+                        val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
+                        server.broadcastPcm(gainedBytes)
                         // Ignore initial 450ms USB ADC power-on transient before detecting signal
                         val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
-                        updateVuAndSignal(stereoBytes, stereoBytes.size, detectSignal)
+                        updateVuAndSignal(gainedBytes, gainedBytes.size, detectSignal)
                     } else if (read < 0) {
                         Log.w(TAG, "AudioRecord read error: $read")
                         StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
@@ -213,13 +227,20 @@ class VinylStreamService : Service() {
         sampleRate: Int,
         channelConfig: Int,
         encoding: Int,
-        bufferSize: Int
+        bufferSize: Int,
+        audioSourceName: String
     ): AudioRecord? {
-        val sources = listOf(
-            MediaRecorder.AudioSource.MIC,
-            MediaRecorder.AudioSource.DEFAULT,
-            MediaRecorder.AudioSource.UNPROCESSED
-        )
+        val sources = when (audioSourceName) {
+            "MIC" -> listOf(MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT)
+            "UNPROCESSED" -> listOf(MediaRecorder.AudioSource.UNPROCESSED, MediaRecorder.AudioSource.DEFAULT)
+            "CAMCORDER" -> listOf(MediaRecorder.AudioSource.CAMCORDER, MediaRecorder.AudioSource.DEFAULT)
+            "DEFAULT" -> listOf(MediaRecorder.AudioSource.DEFAULT, MediaRecorder.AudioSource.MIC)
+            else -> listOf(
+                MediaRecorder.AudioSource.UNPROCESSED,
+                MediaRecorder.AudioSource.MIC,
+                MediaRecorder.AudioSource.DEFAULT
+            )
+        }
         for (src in sources) {
             val rec = try {
                 AudioRecord.Builder()
@@ -237,11 +258,24 @@ class VinylStreamService : Service() {
                 null
             }
             if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) {
+                Log.i(TAG, "Initialized AudioRecord with source=$src")
                 return rec
             }
             rec?.release()
         }
         return null
+    }
+
+    private fun applyGain(pcm: ByteArray, gain: Float): ByteArray {
+        val out = ByteArray(pcm.size)
+        val inBuf = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN)
+        val outBuf = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
+        val count = pcm.size / 2
+        for (i in 0 until count) {
+            val sample = (inBuf.short * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            outBuf.putShort(sample.toShort())
+        }
+        return out
     }
 
     private fun monoToStereo(mono: ByteArray): ByteArray {

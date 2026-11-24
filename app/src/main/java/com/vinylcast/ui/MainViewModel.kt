@@ -107,7 +107,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             context = getApplication(),
             port = currentSettings.streamPort,
             preferredDeviceId = currentSettings.preferredInputDeviceId,
-            roomName = target.roomName
+            roomName = target.roomName,
+            audioSource = currentSettings.audioSource.name,
+            gainMultiplier = currentSettings.gainMultiplier
         )
 
         viewModelScope.launch {
@@ -172,6 +174,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectPreferredInputDevice(deviceId: Int?) {
         viewModelScope.launch {
             settingsRepo.updatePreferredInputDevice(deviceId)
+        }
+    }
+
+    fun selectAudioSource(source: com.vinylcast.model.AudioSourceOption) {
+        viewModelScope.launch {
+            settingsRepo.updateAudioSource(source)
+        }
+    }
+
+    fun setGainMultiplier(gain: Float) {
+        viewModelScope.launch {
+            settingsRepo.updateGainMultiplier(gain)
         }
     }
 
