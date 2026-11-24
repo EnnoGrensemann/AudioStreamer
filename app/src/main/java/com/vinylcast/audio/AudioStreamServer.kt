@@ -112,6 +112,7 @@ class AudioStreamServer(private val port: Int = 8765) {
         val headers = buildString {
             append("HTTP/1.1 200 OK\r\n")
             append("Content-Type: audio/wav\r\n")
+            append("Accept-Ranges: none\r\n")
             append("Cache-Control: no-cache, no-store\r\n")
             append("Pragma: no-cache\r\n")
             append("icy-name: VinylCast Line-In\r\n")

@@ -24,8 +24,8 @@ class SonosUpnpClient(
         streamUrl: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val didl = SonosXmlBuilder.buildDidlLiteMetadata(streamUrl)
-            val setUriBody = SonosXmlBuilder.buildSetAvTransportUriSoap(streamUrl, didl)
+            // Empty CurrentURIMetaData avoids strict Sonos DIDL-Lite validation errors on live WAV streams
+            val setUriBody = SonosXmlBuilder.buildSetAvTransportUriSoap(streamUrl, "")
             sendSoapAction(
                 url = "${device.controlBaseUrl}/MediaRenderer/AVTransport/Control",
                 soapAction = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\"",
@@ -86,7 +86,14 @@ class SonosUpnpClient(
         httpClient.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                error("Sonos UPnP Fehler (${response.code}): ${body.take(200)}")
+                val errorCode = SonosXmlBuilder.parseXmlTag(body, "errorCode")
+                val errorDesc = SonosXmlBuilder.parseXmlTag(body, "errorDescription")
+                val detail = listOfNotNull(errorCode, errorDesc).joinToString(" - ")
+                if (detail.isNotBlank()) {
+                    error("Sonos UPnP Fehler (${response.code}): Code $detail")
+                } else {
+                    error("Sonos UPnP Fehler (${response.code}): ${body.take(200)}")
+                }
             }
             return body
         }
