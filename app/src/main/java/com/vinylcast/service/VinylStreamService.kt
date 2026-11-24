@@ -137,21 +137,25 @@ class VinylStreamService : Service() {
         ) usbControl.findUsbAudioDevice() else null
 
         if (usbDev != null && usbControl.hasUsbPermission(usbDev)) {
-            val usbManager = getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
-            val conn = usbManager.openDevice(usbDev)
-            if (conn != null) {
-                val cfg = usbControl.findLineInStreamConfig(conn, usbDev)
-                val androidIntf = cfg?.let {
-                    usbControl.findAndroidUsbInterface(usbDev, it.streamingInterfaceNum, it.alternateSetting)
+            try {
+                val usbManager = getSystemService(Context.USB_SERVICE) as android.hardware.usb.UsbManager
+                val conn = usbManager.openDevice(usbDev)
+                if (conn != null) {
+                    val cfg = usbControl.findLineInStreamConfig(conn, usbDev)
+                    val androidIntf = cfg?.let {
+                        usbControl.findAndroidUsbInterface(usbDev, it.streamingInterfaceNum, it.alternateSetting)
+                    }
+                    if (cfg != null && androidIntf != null && conn.claimInterface(androidIntf, true)) {
+                        conn.setInterface(androidIntf)
+                        usbControl.unmuteAndConfigureLineIn(conn, cfg)
+                        startUsbIsoStreaming(port, cfg, conn, androidIntf, gainMultiplier)
+                        return
+                    } else {
+                        conn.close()
+                    }
                 }
-                if (cfg != null && androidIntf != null && conn.claimInterface(androidIntf, true)) {
-                    conn.setInterface(androidIntf)
-                    usbControl.unmuteAndConfigureLineIn(conn, cfg)
-                    startUsbIsoStreaming(port, cfg, conn, androidIntf, gainMultiplier)
-                    return
-                } else {
-                    conn.close()
-                }
+            } catch (t: Throwable) {
+                com.vinylcast.util.DebugLog.log("USB-ISO", "Setup-Fehler: ${t.javaClass.simpleName}: ${t.message}")
             }
         }
 

@@ -40,6 +40,7 @@ Java_com_vinylcast_audio_UsbIsoNative_startIsoCapture(
     jclass cls = (*env)->GetObjectClass(env, callback_obj);
     jmethodID onPcmMethod = (*env)->GetMethodID(env, cls, "onPcmData", "([BI)V");
     if (!onPcmMethod) {
+        (*env)->ExceptionClear(env);
         __android_log_print(ANDROID_LOG_ERROR, TAG, "onPcmData method not found");
         return -2;
     }
