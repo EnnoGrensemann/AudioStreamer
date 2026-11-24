@@ -3,12 +3,14 @@ package com.vinylcast.ui.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -34,7 +36,9 @@ fun VuMeter(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(colors.surface),
+            .background(colors.surface)
+            .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         VuChannelRow(label = "L", rms = levels.leftRms)

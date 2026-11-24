@@ -379,16 +379,6 @@ fun TurntableScreen(
             isAudioDetected -> "Wiedergabe aktiv"
             else -> "Kein Audio-Signal (Stille)"
         }
-        val dbText = "${peakDb.toInt()} dB"
-        val linkText = when (selectedOutput) {
-            OutputTarget.LocalDevice -> "Lokal aktiv"
-            is OutputTarget.Sonos -> if (connectedClients > 0) "Sonos verbunden" else "Warte auf Sonos..."
-        }
-        val statusSubtitle = when {
-            !isStreaming -> "Plattenspieler über USB-C Line-In"
-            captureInfo.isNotBlank() -> "$dbText · $linkText · $captureInfo"
-            else -> "$dbText · $linkText"
-        }
 
         Surface(
             color = colors.surface,
@@ -416,41 +406,29 @@ fun TurntableScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(9.dp)
-                                .clip(CircleShape)
-                                .background(statusDotColor)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = statusTitle,
-                            color = colors.textPrimary,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(2.dp))
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(statusDotColor)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = statusSubtitle,
-                        color = colors.textMuted,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        text = statusTitle,
+                        color = colors.textPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
         }
 
         // Stereo VU Meter
-        VuMeter(
-            levels = audioLevels,
-            modifier = Modifier
-                .border(1.dp, colors.borderSubtle, RoundedCornerShape(12.dp))
-                .padding(12.dp)
-        )
+        VuMeter(levels = audioLevels)
 
         // Primary Stream Toggle Button
         Button(
