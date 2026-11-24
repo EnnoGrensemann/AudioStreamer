@@ -25,6 +25,9 @@ object StreamController {
     private val _captureInfo = MutableStateFlow("")
     val captureInfo: StateFlow<String> = _captureInfo.asStateFlow()
 
+    private val _connectedClients = MutableStateFlow(0)
+    val connectedClients: StateFlow<Int> = _connectedClients.asStateFlow()
+
     private val _streamUrl = MutableStateFlow<String?>(null)
     val streamUrl: StateFlow<String?> = _streamUrl.asStateFlow()
 
@@ -41,7 +44,12 @@ object StreamController {
             _isAudioDetected.value = false
             _peakDb.value = -60f
             _captureInfo.value = ""
+            _connectedClients.value = 0
         }
+    }
+
+    fun setConnectedClients(count: Int) {
+        _connectedClients.value = count
     }
 
     fun setAudioCapturing(capturing: Boolean, info: String = "") {

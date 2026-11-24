@@ -75,6 +75,7 @@ fun TurntableScreen(
     val audioLevels by viewModel.audioLevels.collectAsState()
     val peakDb by viewModel.peakDb.collectAsState()
     val captureInfo by viewModel.captureInfo.collectAsState()
+    val connectedClients by viewModel.connectedClients.collectAsState()
     val sonosDevices by viewModel.sonosDevices.collectAsState()
     val selectedSonos by viewModel.selectedSonos.collectAsState()
     val isDiscovering by viewModel.isDiscoveringSonos.collectAsState()
@@ -297,11 +298,11 @@ fun TurntableScreen(
             else -> "Kein Audio-Signal (Stille)"
         }
         val dbText = "${peakDb.toInt()} dB"
+        val sonosLink = if (connectedClients > 0) "Sonos verbunden" else "Warte auf Sonos..."
         val statusSubtitle = when {
             !isStreaming -> "Plattenspieler über USB-C Line-In"
-            captureInfo.isNotBlank() -> "$captureInfo · $dbText"
-            isAudioDetected -> "Musik wird an Sonos gestreamt · $dbText"
-            else -> "Stream aktiv – warte auf Signal · $dbText"
+            captureInfo.isNotBlank() -> "$sonosLink · $captureInfo · $dbText"
+            else -> "$sonosLink · $dbText"
         }
 
         Surface(

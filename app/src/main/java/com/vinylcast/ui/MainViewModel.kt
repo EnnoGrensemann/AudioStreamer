@@ -39,6 +39,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val audioLevels = StreamController.audioLevels
     val peakDb = StreamController.peakDb
     val captureInfo = StreamController.captureInfo
+    val connectedClients = StreamController.connectedClients
     val lastError = StreamController.lastError
 
     private val _sonosDevices = MutableStateFlow<List<SonosDevice>>(emptyList())

@@ -118,7 +118,11 @@ class VinylStreamService : Service() {
         val isStereo = chooseStereo(targetDevice)
         val channelConfig = if (isStereo) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
 
-        val server = AudioStreamServer(port = port, sampleRate = sampleRate).also {
+        val server = AudioStreamServer(
+            port = port,
+            sampleRate = sampleRate,
+            onClientCountChanged = { count -> StreamController.setConnectedClients(count) }
+        ).also {
             it.start()
             httpServer = it
         }
@@ -161,6 +165,7 @@ class VinylStreamService : Service() {
                     return@thread
                 }
                 StreamController.setAudioCapturing(true, infoText)
+                val captureStartedAtMs = System.currentTimeMillis()
 
                 while (isRunning.get()) {
                     val read = recorder.read(chunk, 0, chunk.size)
@@ -168,7 +173,9 @@ class VinylStreamService : Service() {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
                         val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
                         server.broadcastPcm(stereoBytes)
-                        updateVuAndSignal(stereoBytes, stereoBytes.size)
+                        // Ignore initial 450ms USB ADC power-on transient before detecting signal
+                        val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
+                        updateVuAndSignal(stereoBytes, stereoBytes.size, detectSignal)
                     } else if (read < 0) {
                         Log.w(TAG, "AudioRecord read error: $read")
                         StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
@@ -251,7 +258,7 @@ class VinylStreamService : Service() {
         return stereo
     }
 
-    private fun updateVuAndSignal(pcm: ByteArray, length: Int) {
+    private fun updateVuAndSignal(pcm: ByteArray, length: Int, detectSignal: Boolean) {
         val samples = length / 4
         if (samples <= 0) return
         val bb = ByteBuffer.wrap(pcm, 0, length).order(ByteOrder.LITTLE_ENDIAN)
@@ -267,7 +274,7 @@ class VinylStreamService : Service() {
         val rmsR = sqrt(sumSqR / samples).toFloat().coerceIn(0f, 1f)
         val peak = max(rmsL, rmsR)
         val db = if (peak > 0.0001f) 20f * log10(peak) else -60f
-        val detected = signalDetector.update(rmsL, rmsR)
+        val detected = if (detectSignal) signalDetector.update(rmsL, rmsR) else false
         StreamController.updateLevels(rmsL, rmsR, detected, db)
     }
 

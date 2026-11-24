@@ -18,7 +18,8 @@ import kotlin.concurrent.thread
  */
 class AudioStreamServer(
     private val port: Int = 8765,
-    private val sampleRate: Int = WavStreamHeader.SAMPLE_RATE
+    private val sampleRate: Int = WavStreamHeader.SAMPLE_RATE,
+    private val onClientCountChanged: (Int) -> Unit = {}
 ) {
 
     companion object {
@@ -66,7 +67,6 @@ class AudioStreamServer(
                 socket.soTimeout = 10_000
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val requestLine = reader.readLine() ?: return@thread
-                // Drain HTTP headers
                 while (true) {
                     val line = reader.readLine() ?: break
                     if (line.isEmpty()) break
@@ -96,6 +96,7 @@ class AudioStreamServer(
 
                 connection = ClientConnection(socket)
                 clients.add(connection)
+                onClientCountChanged(clients.size)
                 Log.i(TAG, "Sonos/Client connected: ${socket.inetAddress.hostAddress}")
 
                 while (running.get() && !socket.isClosed) {
@@ -105,7 +106,10 @@ class AudioStreamServer(
             } catch (e: Exception) {
                 Log.d(TAG, "Client disconnected: ${e.message}")
             } finally {
-                connection?.let { clients.remove(it) }
+                connection?.let {
+                    clients.remove(it)
+                    onClientCountChanged(clients.size)
+                }
                 runCatching { socket.close() }
             }
         }
