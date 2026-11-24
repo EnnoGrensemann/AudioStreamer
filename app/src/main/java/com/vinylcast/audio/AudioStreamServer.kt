@@ -24,7 +24,7 @@ class AudioStreamServer(
 
     companion object {
         private const val TAG = "AudioStreamServer"
-        private const val MAX_QUEUE_CHUNKS = 64
+        private const val MAX_QUEUE_CHUNKS = 128
     }
 
     private val running = AtomicBoolean(false)
@@ -64,6 +64,7 @@ class AudioStreamServer(
             var connection: ClientConnection? = null
             try {
                 socket.tcpNoDelay = true
+                socket.sendBufferSize = 65536
                 socket.soTimeout = 10_000
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val requestLine = reader.readLine() ?: return@thread
@@ -72,36 +73,43 @@ class AudioStreamServer(
                     if (line.isEmpty()) break
                 }
 
-                val out: OutputStream = socket.getOutputStream()
+                val rawOut: OutputStream = socket.getOutputStream()
                 if (requestLine.startsWith("HEAD ")) {
-                    writeHeaders(out)
-                    out.flush()
+                    writeHeaders(rawOut)
+                    rawOut.flush()
                     return@thread
                 }
 
                 if (!requestLine.contains("/stream.wav")) {
                     val body = "VinylCast Audio Streamer\n".toByteArray()
-                    out.write(
+                    rawOut.write(
                         ("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n")
                             .toByteArray()
                     )
-                    out.write(body)
-                    out.flush()
+                    rawOut.write(body)
+                    rawOut.flush()
                     return@thread
                 }
 
-                writeHeaders(out)
-                out.write(WavStreamHeader.createHeader(sampleRate = sampleRate))
-                out.flush()
+                writeHeaders(rawOut)
+                rawOut.write(WavStreamHeader.createHeader(sampleRate = sampleRate))
+                rawOut.flush()
 
+                val bufferedOut = java.io.BufferedOutputStream(rawOut, 16384)
                 connection = ClientConnection(socket)
                 clients.add(connection)
                 onClientCountChanged(clients.size)
                 Log.i(TAG, "Sonos/Client connected: ${socket.inetAddress.hostAddress}")
 
+                var pendingFlush = 0
                 while (running.get() && !socket.isClosed) {
                     val chunk = connection.queue.take()
-                    out.write(chunk)
+                    bufferedOut.write(chunk)
+                    pendingFlush++
+                    if (connection.queue.isEmpty() || pendingFlush >= 4) {
+                        bufferedOut.flush()
+                        pendingFlush = 0
+                    }
                 }
             } catch (e: Exception) {
                 Log.d(TAG, "Client disconnected: ${e.message}")

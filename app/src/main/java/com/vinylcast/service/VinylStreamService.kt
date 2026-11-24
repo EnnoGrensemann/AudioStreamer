@@ -278,9 +278,34 @@ class VinylStreamService : Service() {
         val infoText = "${cfg.sampleRate / 1000} kHz · $chLabel · USB Line-In"
         StreamController.setAudioCapturing(true, infoText)
 
-        captureThread = thread(name = "VinylUsbIsoCapture", priority = Thread.MAX_PRIORITY) {
+        val pcmQueue = java.util.concurrent.LinkedBlockingQueue<ByteArray>(128)
+        val processingThread = thread(name = "VinylPcmProcess", priority = Thread.MAX_PRIORITY) {
             val captureStartedAtMs = System.currentTimeMillis()
+            var lastVuUpdateMs = 0L
+            while (isRunning.get() || pcmQueue.isNotEmpty()) {
+                val rawChunk = try {
+                    pcmQueue.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    break
+                } ?: continue
 
+                val stereoBytes = if (cfg.channels == 2) rawChunk else monoToStereo(rawChunk)
+                val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
+                eqProcessor.updateSettings(StreamController.eqSettings.value, cfg.sampleRate)
+                val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
+                server?.broadcastPcm(eqBytes)
+                track?.write(eqBytes, 0, eqBytes.size)
+
+                val now = System.currentTimeMillis()
+                if (now - lastVuUpdateMs >= 33L) {
+                    lastVuUpdateMs = now
+                    val detectSignal = now - captureStartedAtMs > 450L
+                    updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
+                }
+            }
+        }
+
+        captureThread = thread(name = "VinylUsbIsoCapture", priority = Thread.MAX_PRIORITY) {
             UsbIsoNative.startIsoCapture(
                 fd = conn.fileDescriptor,
                 endpointAddr = cfg.endpointAddress,
@@ -289,18 +314,15 @@ class VinylStreamService : Service() {
                 callback = object : UsbIsoNative.PcmCallback {
                     override fun onPcmData(data: ByteArray, length: Int) {
                         if (!isRunning.get() || length <= 0) return
-                        val validBytes = data.copyOf(length)
-                        val stereoBytes = if (cfg.channels == 2) validBytes else monoToStereo(validBytes)
-                        val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
-                        eqProcessor.updateSettings(StreamController.eqSettings.value, cfg.sampleRate)
-                        val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
-                        server?.broadcastPcm(eqBytes)
-                        track?.write(eqBytes, 0, eqBytes.size)
-                        val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
-                        updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
+                        val copy = data.copyOf(length)
+                        if (!pcmQueue.offer(copy)) {
+                            pcmQueue.poll()
+                            pcmQueue.offer(copy)
+                        }
                     }
                 }
             )
+            processingThread.interrupt()
             StreamController.setAudioCapturing(false)
         }
     }

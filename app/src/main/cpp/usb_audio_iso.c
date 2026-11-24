@@ -9,7 +9,7 @@
 #include <android/log.h>
 
 #define TAG "UsbAudioIso"
-#define N_URBS 8
+#define N_URBS 16
 #define PACKETS_PER_URB 16
 
 typedef struct {
