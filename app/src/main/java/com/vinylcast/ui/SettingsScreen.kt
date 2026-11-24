@@ -344,6 +344,74 @@ fun SettingsScreen(
             }
         }
 
+        // Debug Log Panel
+        val debugLog by viewModel.debugLogText.collectAsState()
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Debug-Log",
+                color = colors.amberPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.refreshDebugDevices() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.surfaceElevated,
+                        contentColor = colors.textPrimary
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Geräte", fontSize = 12.sp)
+                }
+                Button(
+                    onClick = {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(debugLog))
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.amberPrimary,
+                        contentColor = if (settings.darkMode) colors.background else Color.White
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Kopieren", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = { viewModel.clearDebugLog() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.surfaceElevated,
+                        contentColor = colors.textPrimary
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Leeren", fontSize = 12.sp)
+                }
+            }
+            Text(
+                text = debugLog.ifBlank { "Noch keine Logs. Stream starten oder auf 'Geräte' / 'USB-Line-In' tippen." },
+                color = colors.textMuted,
+                fontSize = 10.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.background)
+                    .padding(10.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }

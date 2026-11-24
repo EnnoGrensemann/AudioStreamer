@@ -162,6 +162,12 @@ class VinylStreamService : Service() {
             if (targetDevice != null) {
                 val routed = recorder.setPreferredDevice(targetDevice)
                 Log.i(TAG, "Preferred audio input: ${targetDevice.productName} (routed=$routed)")
+                com.vinylcast.util.DebugLog.log(
+                    "Capture",
+                    "target=${targetDevice.productName}(id=${targetDevice.id}) setPreferred=$routed rate=$sampleRate stereo=$isStereo src=$audioSourceName"
+                )
+            } else {
+                com.vinylcast.util.DebugLog.log("Capture", "target=NULL rate=$sampleRate stereo=$isStereo src=$audioSourceName")
             }
 
             val devName = targetDevice?.productName?.toString()?.take(18) ?: "Standard"
@@ -171,6 +177,11 @@ class VinylStreamService : Service() {
             val chunk = ByteArray(4096)
             try {
                 recorder.startRecording()
+                val routedAfter = recorder.routedDevice
+                com.vinylcast.util.DebugLog.log(
+                    "Capture",
+                    "recordingState=${recorder.recordingState} routedAfter=${routedAfter?.productName}(id=${routedAfter?.id},type=${routedAfter?.type})"
+                )
                 if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                     StreamController.setError("AudioRecord startet nicht (Berechtigung / USB-Gerät prüfen).")
                     stopCaptureAndServer()
@@ -179,6 +190,7 @@ class VinylStreamService : Service() {
                 }
                 StreamController.setAudioCapturing(true, infoText)
                 val captureStartedAtMs = System.currentTimeMillis()
+                var lastPcmLogMs = 0L
 
                 while (isRunning.get()) {
                     val read = recorder.read(chunk, 0, chunk.size)
@@ -187,9 +199,13 @@ class VinylStreamService : Service() {
                         val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
                         val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
                         server.broadcastPcm(gainedBytes)
-                        // Ignore initial 450ms USB ADC power-on transient before detecting signal
-                        val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
+                        val now = System.currentTimeMillis()
+                        val detectSignal = now - captureStartedAtMs > 450L
                         updateVuAndSignal(gainedBytes, gainedBytes.size, detectSignal)
+                        if (now - lastPcmLogMs >= 1500L) {
+                            lastPcmLogMs = now
+                            logPcmStats(gainedBytes)
+                        }
                     } else if (read < 0) {
                         Log.w(TAG, "AudioRecord read error: $read")
                         StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
@@ -276,6 +292,19 @@ class VinylStreamService : Service() {
             outBuf.putShort(sample.toShort())
         }
         return out
+    }
+
+    private fun logPcmStats(pcm: ByteArray) {
+        val bb = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN)
+        var minS = Int.MAX_VALUE
+        var maxS = Int.MIN_VALUE
+        val count = pcm.size / 2
+        for (i in 0 until count) {
+            val s = bb.short.toInt()
+            if (s < minS) minS = s
+            if (s > maxS) maxS = s
+        }
+        com.vinylcast.util.DebugLog.log("PCM", "samples=$count min=$minS max=$maxS")
     }
 
     private fun monoToStereo(mono: ByteArray): ByteArray {

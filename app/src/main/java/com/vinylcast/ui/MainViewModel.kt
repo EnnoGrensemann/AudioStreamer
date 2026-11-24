@@ -193,11 +193,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val debugLogText = com.vinylcast.util.DebugLog.logText
+
     fun inspectAndSwitchUsbLineIn() {
         viewModelScope.launch {
+            usbHelper.dumpInputDevicesDebug()
             _usbDiagnostic.value = "Prüfe USB-Gerät..."
             _usbDiagnostic.value = usbControlHelper.requestPermissionAndInspect()
         }
+    }
+
+    fun refreshDebugDevices() {
+        usbHelper.dumpInputDevicesDebug()
+    }
+
+    fun clearDebugLog() {
+        com.vinylcast.util.DebugLog.clear()
     }
 
     fun dismissError() {

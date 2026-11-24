@@ -107,6 +107,16 @@ class UsbAudioControlHelper(private val context: Context) {
                             val unitId = raw[i + 3].toInt() and 0xFF
                             val termType = (raw[i + 4].toInt() and 0xFF) or ((raw[i + 5].toInt() and 0xFF) shl 8)
                             terminals.add(UacInputTerminal(unitId, termType))
+                            com.vinylcast.util.DebugLog.log("UAC", "InputTerminal id=$unitId type=0x${termType.toString(16)}")
+                        }
+                        0x03 -> if (len >= 6) {
+                            val unitId = raw[i + 3].toInt() and 0xFF
+                            val termType = (raw[i + 4].toInt() and 0xFF) or ((raw[i + 5].toInt() and 0xFF) shl 8)
+                            com.vinylcast.util.DebugLog.log("UAC", "OutputTerminal id=$unitId type=0x${termType.toString(16)}")
+                        }
+                        0x04 -> if (len >= 5) {
+                            val unitId = raw[i + 3].toInt() and 0xFF
+                            com.vinylcast.util.DebugLog.log("UAC", "MixerUnit id=$unitId")
                         }
                         UAC_SELECTOR_UNIT -> if (len >= 6) {
                             val unitId = raw[i + 3].toInt() and 0xFF
@@ -116,6 +126,14 @@ class UsbAudioControlHelper(private val context: Context) {
                             }
                             selectorUnitId = unitId
                             selectorPins = pins
+                            com.vinylcast.util.DebugLog.log("UAC", "SelectorUnit id=$unitId pins=$pins")
+                        }
+                        UAC_FEATURE_UNIT -> if (len >= 6) {
+                            val unitId = raw[i + 3].toInt() and 0xFF
+                            val srcId = raw[i + 4].toInt() and 0xFF
+                            val muteBuf = ByteArray(1)
+                            val muteRes = conn.controlTransfer(0xA1, GET_CUR, 0x0100, (unitId shl 8) or audioControlInterface, muteBuf, 1, 500)
+                            com.vinylcast.util.DebugLog.log("UAC", "FeatureUnit id=$unitId src=$srcId mute=${if (muteRes >= 1) muteBuf[0].toInt() else muteRes}")
                         }
                     }
                 }
@@ -166,6 +184,7 @@ class UsbAudioControlHelper(private val context: Context) {
                 report.append("Kein Selector-Unit vorhanden (Hardware-Routing fest).")
             }
 
+            com.vinylcast.util.DebugLog.log("UAC", report.toString().replace("\n", " | "))
             Log.i(TAG, report.toString())
             report.toString()
         } finally {
