@@ -67,7 +67,6 @@ class AudioStreamServer(
                 socket.soTimeout = 10_000
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val requestLine = reader.readLine() ?: return@thread
-                com.vinylcast.util.DebugLog.log("HTTP", "${socket.inetAddress.hostAddress}: $requestLine")
                 while (true) {
                     val line = reader.readLine() ?: break
                     if (line.isEmpty()) break

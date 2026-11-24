@@ -69,18 +69,4 @@ class UsbAudioDeviceHelper(context: Context) {
             info.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
             info.type == AudioDeviceInfo.TYPE_USB_ACCESSORY
     }
-
-    fun dumpInputDevicesDebug() {
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        for (d in devices) {
-            val addr = if (android.os.Build.VERSION.SDK_INT >= 28) d.address else ""
-            com.vinylcast.util.DebugLog.log(
-                "AudioDev",
-                "id=${d.id} type=${d.type} name=${d.productName} addr=$addr " +
-                    "rates=${d.sampleRates.joinToString(",")} " +
-                    "ch=${d.channelCounts.joinToString(",")} " +
-                    "enc=${d.encodings.joinToString(",")}"
-            )
-        }
-    }
 }

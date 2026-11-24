@@ -12,7 +12,6 @@ import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
-import com.vinylcast.util.DebugLog
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -237,7 +236,7 @@ class UsbAudioControlHelper(private val context: Context) {
         }
 
         if (lineOutTermId == null) {
-            DebugLog.log("UAC", "Kein dedizierter Line-In OutputTerminal gefunden.")
+            Log.d("UAC", "Kein dedizierter Line-In OutputTerminal gefunden.")
             return null
         }
 
@@ -250,7 +249,7 @@ class UsbAudioControlHelper(private val context: Context) {
             ?: candidates.firstOrNull()
             ?: return null
 
-        DebugLog.log(
+        Log.d(
             "UAC",
             "Line-In Stream gefunden: intf=${best.intfNum} alt=${best.altSetting} ep=0x${best.endpointAddr.toString(16)} " +
                 "pkt=${best.maxPacketSize} ch=${best.channels} sub=${best.subframeSize} rate=${best.sampleRate} feat=$lineFeatureId"
@@ -294,7 +293,7 @@ class UsbAudioControlHelper(private val context: Context) {
                     1,
                     500
                 )
-                DebugLog.log("UAC", "Unmute feat=$featId ch=$ch res=$res")
+                Log.d("UAC", "Unmute feat=$featId ch=$ch res=$res")
             }
         }
 
@@ -314,7 +313,7 @@ class UsbAudioControlHelper(private val context: Context) {
                 3,
                 500
             )
-            DebugLog.log("UAC", "SetSampleRate ${cfg.sampleRate} ep=0x${cfg.endpointAddress.toString(16)} res=$res")
+            Log.d("UAC", "SetSampleRate ${cfg.sampleRate} ep=0x${cfg.endpointAddress.toString(16)} res=$res")
         }
     }
 
@@ -323,7 +322,7 @@ class UsbAudioControlHelper(private val context: Context) {
             requestPermissionAndInspectInternal()
         } catch (t: Throwable) {
             val msg = "USB-Fehler: ${t.javaClass.simpleName}: ${t.message}"
-            DebugLog.log("UAC", msg)
+            Log.d("UAC", msg)
             msg
         }
     }

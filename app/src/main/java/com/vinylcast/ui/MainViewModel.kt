@@ -1,11 +1,15 @@
 package com.vinylcast.ui
 
 import android.app.Application
+import android.content.Context
+import android.media.AudioManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vinylcast.audio.UsbAudioControlHelper
 import com.vinylcast.audio.UsbAudioDeviceHelper
 import com.vinylcast.model.AppSettings
 import com.vinylcast.model.AudioInputDevice
+import com.vinylcast.model.OutputTarget
 import com.vinylcast.model.SonosDevice
 import com.vinylcast.service.StreamController
 import com.vinylcast.service.VinylStreamService
@@ -20,17 +24,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepo = SettingsRepository(application)
     private val usbHelper = UsbAudioDeviceHelper(application)
-    private val usbControlHelper = com.vinylcast.audio.UsbAudioControlHelper(application)
+    private val usbControlHelper = UsbAudioControlHelper(application)
     private val sonosDiscovery = SonosSsdpDiscovery(application)
     private val sonosClient = SonosUpnpClient()
-
-    private val _usbDiagnostic = MutableStateFlow<String?>(null)
-    val usbDiagnostic: StateFlow<String?> = _usbDiagnostic.asStateFlow()
+    private val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
@@ -49,14 +52,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _sonosDevices = MutableStateFlow<List<SonosDevice>>(emptyList())
     val sonosDevices: StateFlow<List<SonosDevice>> = _sonosDevices.asStateFlow()
 
-    private val _selectedSonos = MutableStateFlow<SonosDevice?>(null)
-    val selectedSonos: StateFlow<SonosDevice?> = _selectedSonos.asStateFlow()
+    private val _selectedOutput = MutableStateFlow<OutputTarget>(OutputTarget.LocalDevice)
+    val selectedOutput: StateFlow<OutputTarget> = _selectedOutput.asStateFlow()
 
     private val _isDiscoveringSonos = MutableStateFlow(false)
     val isDiscoveringSonos: StateFlow<Boolean> = _isDiscoveringSonos.asStateFlow()
 
-    private val _sonosVolume = MutableStateFlow(35)
-    val sonosVolume: StateFlow<Int> = _sonosVolume.asStateFlow()
+    private val _volume = MutableStateFlow(35)
+    val volume: StateFlow<Int> = _volume.asStateFlow()
 
     init {
         discoverSonos()
@@ -71,20 +74,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _sonosDevices.value = found
             val lastUdn = settingsRepo.lastSonosUdnFlow.first()
             val preferred = found.firstOrNull { it.udn == lastUdn } ?: found.firstOrNull()
-            if (preferred != null) {
-                selectSonos(preferred)
+            if (preferred != null && _selectedOutput.value is OutputTarget.LocalDevice) {
+                selectOutput(OutputTarget.Sonos(preferred))
             }
             _isDiscoveringSonos.value = false
         }
     }
 
-    fun selectSonos(device: SonosDevice) {
-        _selectedSonos.value = device
-        StreamController.setActiveSonos(device)
-        viewModelScope.launch {
-            settingsRepo.updateLastSonosUdn(device.udn)
-            sonosClient.getVolume(device).onSuccess { vol ->
-                _sonosVolume.value = vol
+    fun selectOutput(target: OutputTarget) {
+        _selectedOutput.value = target
+        when (target) {
+            is OutputTarget.Sonos -> {
+                StreamController.setActiveSonos(target.device)
+                viewModelScope.launch {
+                    settingsRepo.updateLastSonosUdn(target.device.udn)
+                    sonosClient.getVolume(target.device).onSuccess { vol ->
+                        _volume.value = vol
+                    }
+                }
+            }
+            OutputTarget.LocalDevice -> {
+                StreamController.setActiveSonos(null)
+                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                _volume.value = ((curVol.toFloat() / maxVol) * 100f).roundToInt().coerceIn(0, 100)
             }
         }
     }
@@ -98,68 +111,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startStream() {
-        val target = _selectedSonos.value
-        if (target == null) {
-            StreamController.setError("Keine Sonos Playbar ausgewählt. Bitte zuerst im WLAN suchen.")
-            return
-        }
-
+        val target = _selectedOutput.value
         val currentSettings = settings.value
         StreamController.setError(null)
 
         viewModelScope.launch {
-            if (currentSettings.preferredInputDeviceId == null) {
-                usbControlHelper.findUsbAudioDevice()?.let { usbDev ->
-                    usbControlHelper.ensureUsbPermission(usbDev)
-                }
+            usbControlHelper.findUsbAudioDevice()?.let { usbDev ->
+                usbControlHelper.ensureUsbPermission(usbDev)
             }
+
+            val isLocal = target is OutputTarget.LocalDevice
+            val roomName = (target as? OutputTarget.Sonos)?.device?.roomName ?: "Lokal"
 
             VinylStreamService.startService(
                 context = getApplication(),
                 port = currentSettings.streamPort,
-                preferredDeviceId = currentSettings.preferredInputDeviceId,
-                roomName = target.roomName,
-                audioSource = currentSettings.audioSource.name,
-                gainMultiplier = currentSettings.gainMultiplier
+                roomName = roomName,
+                gainMultiplier = currentSettings.gainMultiplier,
+                localPlayback = isLocal
             )
 
-            var url: String? = null
-            repeat(20) {
-                url = StreamController.streamUrl.value
-                if (url != null) return@repeat
-                delay(100)
-            }
-            val streamUrl = url
-            if (streamUrl == null) {
-                StreamController.setError("Keine WLAN-IP gefunden. Ist das Pixel 5 im WLAN?")
-                VinylStreamService.stopService(getApplication())
-                return@launch
-            }
-
-            sonosClient.startStream(target, streamUrl)
-                .onFailure { err ->
-                    StreamController.setError("Sonos Start fehlgeschlagen: ${err.message}")
-                    VinylStreamService.stopService(getApplication())
+            if (target is OutputTarget.Sonos) {
+                var url: String? = null
+                repeat(20) {
+                    url = StreamController.streamUrl.value
+                    if (url != null) return@repeat
+                    delay(100)
                 }
+                val streamUrl = url
+                if (streamUrl == null) {
+                    StreamController.setError("Keine WLAN-IP gefunden. Ist das Handy im WLAN?")
+                    VinylStreamService.stopService(getApplication())
+                    return@launch
+                }
+
+                sonosClient.startStream(target.device, streamUrl)
+                    .onFailure { err ->
+                        StreamController.setError("Sonos Start fehlgeschlagen: ${err.message}")
+                        VinylStreamService.stopService(getApplication())
+                    }
+            }
         }
     }
 
     private fun stopStream() {
-        val target = _selectedSonos.value
+        val target = _selectedOutput.value
         VinylStreamService.stopService(getApplication())
-        if (target != null) {
+        if (target is OutputTarget.Sonos) {
             viewModelScope.launch {
-                sonosClient.stopStream(target)
+                sonosClient.stopStream(target.device)
             }
         }
     }
 
-    fun setSonosVolume(volume: Int) {
-        val clamped = volume.coerceIn(0, 100)
-        _sonosVolume.value = clamped
-        val target = _selectedSonos.value ?: return
-        viewModelScope.launch {
-            sonosClient.setVolume(target, clamped)
+    fun setOutputVolume(volumePercent: Int) {
+        val clamped = volumePercent.coerceIn(0, 100)
+        _volume.value = clamped
+        when (val target = _selectedOutput.value) {
+            is OutputTarget.Sonos -> {
+                viewModelScope.launch {
+                    sonosClient.setVolume(target.device, clamped)
+                }
+            }
+            OutputTarget.LocalDevice -> {
+                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                val targetVol = ((clamped / 100f) * maxVol).roundToInt().coerceIn(0, maxVol)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+            }
         }
     }
 
@@ -181,40 +199,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectPreferredInputDevice(deviceId: Int?) {
-        viewModelScope.launch {
-            settingsRepo.updatePreferredInputDevice(deviceId)
-        }
-    }
-
-    fun selectAudioSource(source: com.vinylcast.model.AudioSourceOption) {
-        viewModelScope.launch {
-            settingsRepo.updateAudioSource(source)
-        }
-    }
-
     fun setGainMultiplier(gain: Float) {
         viewModelScope.launch {
             settingsRepo.updateGainMultiplier(gain)
         }
-    }
-
-    val debugLogText = com.vinylcast.util.DebugLog.logText
-
-    fun inspectAndSwitchUsbLineIn() {
-        viewModelScope.launch {
-            usbHelper.dumpInputDevicesDebug()
-            _usbDiagnostic.value = "Prüfe USB-Gerät..."
-            _usbDiagnostic.value = usbControlHelper.requestPermissionAndInspect()
-        }
-    }
-
-    fun refreshDebugDevices() {
-        usbHelper.dumpInputDevicesDebug()
-    }
-
-    fun clearDebugLog() {
-        com.vinylcast.util.DebugLog.clear()
     }
 
     fun dismissError() {

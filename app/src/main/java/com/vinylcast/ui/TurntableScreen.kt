@@ -23,7 +23,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.BluetoothAudio
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vinylcast.model.OutputTarget
 import com.vinylcast.ui.components.TurntableDisc
 import com.vinylcast.ui.components.VuMeter
 import com.vinylcast.ui.theme.VinylTheme
@@ -77,13 +80,13 @@ fun TurntableScreen(
     val captureInfo by viewModel.captureInfo.collectAsState()
     val connectedClients by viewModel.connectedClients.collectAsState()
     val sonosDevices by viewModel.sonosDevices.collectAsState()
-    val selectedSonos by viewModel.selectedSonos.collectAsState()
+    val selectedOutput by viewModel.selectedOutput.collectAsState()
     val isDiscovering by viewModel.isDiscoveringSonos.collectAsState()
-    val volume by viewModel.sonosVolume.collectAsState()
+    val volume by viewModel.volume.collectAsState()
     val lastError by viewModel.lastError.collectAsState()
 
     val usbDevice = inputDevices.firstOrNull { it.isUsb }
-    var sonosMenuExpanded by remember { mutableStateOf(false) }
+    var outputMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -92,7 +95,7 @@ fun TurntableScreen(
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Header Row
         Row(
@@ -114,6 +117,36 @@ fun TurntableScreen(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.width(10.dp))
+                // Compact USB indicator badge
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.surface)
+                        .border(1.dp, colors.borderSubtle, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (usbDevice != null) colors.emeraldActive else colors.amberPrimary)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Icon(
+                        imageVector = Icons.Default.Usb,
+                        contentDescription = null,
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = if (usbDevice != null) "Line-In" else "Kein USB",
+                        color = colors.textPrimary,
+                        fontSize = 11.sp
+                    )
+                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,115 +174,136 @@ fun TurntableScreen(
             }
         }
 
-        // Status Pills: USB Line-In + Sonos Speaker
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(colors.surface)
-                    .border(1.dp, colors.borderSubtle, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (usbDevice != null) colors.emeraldActive else colors.amberPrimary)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = Icons.Default.Usb,
-                    contentDescription = null,
-                    tint = colors.textMuted,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = usbDevice?.name ?: "Kein USB-Adapter",
-                    color = colors.textPrimary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+        // Large Output Selector (Sonos or Local/Bluetooth)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            val outputTitle = when (val out = selectedOutput) {
+                is OutputTarget.Sonos -> out.device.roomName
+                OutputTarget.LocalDevice -> "Handy / Bluetooth"
+            }
+            val outputSubtitle = when (val out = selectedOutput) {
+                is OutputTarget.Sonos -> out.device.modelName
+                OutputTarget.LocalDevice -> "Lokale Wiedergabe (Bluetooth / Lautsprecher)"
+            }
+            val outputIcon = when (selectedOutput) {
+                is OutputTarget.Sonos -> Icons.Default.Speaker
+                OutputTarget.LocalDevice -> Icons.Default.BluetoothAudio
             }
 
-            Box(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
+                    .clickable(enabled = !isStreaming) { outputMenuExpanded = true }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(colors.surface)
-                        .border(1.dp, colors.borderSubtle, RoundedCornerShape(10.dp))
-                        .clickable { sonosMenuExpanded = true }
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(colors.surfaceElevated),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Speaker,
+                            imageVector = outputIcon,
                             contentDescription = null,
-                            tint = if (selectedSonos != null) colors.amberPrimary else colors.textMuted,
-                            modifier = Modifier.size(16.dp)
+                            tint = colors.amberPrimary,
+                            modifier = Modifier.size(22.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = selectedSonos?.roomName ?: if (isDiscovering) "Suche Sonos..." else "Sonos wählen",
+                            text = outputTitle,
                             color = colors.textPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = outputSubtitle,
+                            color = colors.textMuted,
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    if (isDiscovering) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = colors.amberPrimary
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Sonos neu suchen",
-                            tint = colors.textMuted,
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clickable { viewModel.discoverSonos() }
-                        )
-                    }
                 }
 
-                DropdownMenu(
-                    expanded = sonosMenuExpanded,
-                    onDismissRequest = { sonosMenuExpanded = false }
-                ) {
-                    if (sonosDevices.isEmpty()) {
-                        DropdownMenuItem(
-                            text = { Text("Keine Sonos-Geräte gefunden – neu suchen") },
-                            onClick = {
-                                sonosMenuExpanded = false
-                                viewModel.discoverSonos()
-                            }
-                        )
-                    } else {
-                        sonosDevices.forEach { device ->
-                            DropdownMenuItem(
-                                text = { Text("${device.roomName} (${device.modelName})") },
-                                onClick = {
-                                    viewModel.selectSonos(device)
-                                    sonosMenuExpanded = false
-                                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = "Ausgabe wählen",
+                        tint = colors.textMuted,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = { viewModel.discoverSonos() },
+                        enabled = !isDiscovering && !isStreaming,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        if (isDiscovering) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.amberPrimary
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Sonos neu suchen",
+                                tint = colors.amberPrimary,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
+                }
+            }
+
+            DropdownMenu(
+                expanded = outputMenuExpanded,
+                onDismissRequest = { outputMenuExpanded = false }
+            ) {
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Icon(Icons.Default.BluetoothAudio, contentDescription = null, tint = colors.amberPrimary)
+                    },
+                    text = {
+                        Column {
+                            Text("Handy / Bluetooth", fontWeight = FontWeight.SemiBold)
+                            Text("Lokaler Lautsprecher oder Bluetooth-Box", fontSize = 11.sp, color = colors.textMuted)
+                        }
+                    },
+                    onClick = {
+                        viewModel.selectOutput(OutputTarget.LocalDevice)
+                        outputMenuExpanded = false
+                    }
+                )
+                sonosDevices.forEach { device ->
+                    DropdownMenuItem(
+                        leadingIcon = {
+                            Icon(Icons.Default.Speaker, contentDescription = null, tint = colors.amberPrimary)
+                        },
+                        text = {
+                            Column {
+                                Text(device.roomName, fontWeight = FontWeight.SemiBold)
+                                Text(device.modelName, fontSize = 11.sp, color = colors.textMuted)
+                            }
+                        },
+                        onClick = {
+                            viewModel.selectOutput(OutputTarget.Sonos(device))
+                            outputMenuExpanded = false
+                        }
+                    )
                 }
             }
         }
@@ -273,16 +327,16 @@ fun TurntableScreen(
             }
         }
 
-        // Animated Turntable Platter (spins when streaming and audio signal is detected)
+        // Animated Turntable Platter
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
             TurntableDisc(
                 isSpinning = isStreaming && isAudioDetected,
-                modifier = Modifier.fillMaxWidth(0.78f)
+                modifier = Modifier.fillMaxWidth(0.75f)
             )
         }
 
@@ -298,11 +352,14 @@ fun TurntableScreen(
             else -> "Kein Audio-Signal (Stille)"
         }
         val dbText = "${peakDb.toInt()} dB"
-        val sonosLink = if (connectedClients > 0) "Sonos verbunden" else "Warte auf Sonos..."
+        val linkText = when (selectedOutput) {
+            OutputTarget.LocalDevice -> "Lokal aktiv"
+            is OutputTarget.Sonos -> if (connectedClients > 0) "Sonos verbunden" else "Warte auf Sonos..."
+        }
         val statusSubtitle = when {
             !isStreaming -> "Plattenspieler über USB-C Line-In"
-            captureInfo.isNotBlank() -> "$dbText · $sonosLink · $captureInfo"
-            else -> "$dbText · $sonosLink"
+            captureInfo.isNotBlank() -> "$dbText · $linkText · $captureInfo"
+            else -> "$dbText · $linkText"
         }
 
         Surface(
@@ -313,12 +370,12 @@ fun TurntableScreen(
                 .border(1.dp, colors.borderSubtle, RoundedCornerShape(14.dp))
         ) {
             Row(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(colors.surfaceElevated),
                     contentAlignment = Alignment.Center
@@ -327,7 +384,7 @@ fun TurntableScreen(
                         imageVector = if (isStreaming && isAudioDetected) Icons.Default.GraphicEq else Icons.Default.Album,
                         contentDescription = null,
                         tint = statusDotColor,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -343,15 +400,15 @@ fun TurntableScreen(
                         Text(
                             text = statusTitle,
                             color = colors.textPrimary,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = statusSubtitle,
                         color = colors.textMuted,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -391,7 +448,7 @@ fun TurntableScreen(
             )
         }
 
-        // Sonos Volume Control
+        // Volume Control
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -409,7 +466,7 @@ fun TurntableScreen(
             )
             Slider(
                 value = volume.toFloat(),
-                onValueChange = { viewModel.setSonosVolume(it.toInt()) },
+                onValueChange = { viewModel.setOutputVolume(it.toInt()) },
                 valueRange = 0f..100f,
                 colors = SliderDefaults.colors(
                     thumbColor = colors.amberPrimary,
