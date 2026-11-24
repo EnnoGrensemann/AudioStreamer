@@ -289,18 +289,20 @@ class VinylStreamService : Service() {
                     break
                 } ?: continue
 
-                val stereoBytes = if (cfg.channels == 2) rawChunk else monoToStereo(rawChunk)
-                val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
+                val audioBytes = if (cfg.channels == 2) rawChunk else monoToStereo(rawChunk)
+                if (gainMultiplier > 1.05f) {
+                    applyGainInPlace(audioBytes, gainMultiplier)
+                }
                 eqProcessor.updateSettings(StreamController.eqSettings.value, cfg.sampleRate)
-                val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
-                server?.broadcastPcm(eqBytes)
-                track?.write(eqBytes, 0, eqBytes.size)
+                eqProcessor.processStereo16BitInPlace(audioBytes)
+                server?.broadcastPcm(audioBytes)
+                track?.write(audioBytes, 0, audioBytes.size)
 
                 val now = System.currentTimeMillis()
                 if (now - lastVuUpdateMs >= 33L) {
                     lastVuUpdateMs = now
                     val detectSignal = now - captureStartedAtMs > 450L
-                    updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
+                    updateVuAndSignal(audioBytes, audioBytes.size, detectSignal)
                 }
             }
         }
@@ -401,6 +403,18 @@ class VinylStreamService : Service() {
             rec?.release()
         }
         return null
+    }
+
+    private fun applyGainInPlace(pcm: ByteArray, gain: Float) {
+        var idx = 0
+        val end = pcm.size - 1
+        while (idx < end) {
+            val raw = (pcm[idx].toInt() and 0xFF) or (pcm[idx + 1].toInt() shl 8)
+            val scaled = (raw * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            pcm[idx] = (scaled and 0xFF).toByte()
+            pcm[idx + 1] = ((scaled shr 8) and 0xFF).toByte()
+            idx += 2
+        }
     }
 
     private fun applyGain(pcm: ByteArray, gain: Float): ByteArray {

@@ -87,23 +87,31 @@ class ThreeBandEqProcessor(private var sampleRate: Int = 48000) {
         computeHighShelf(6500.0, treble.toDouble())
     }
 
+    fun processStereo16BitInPlace(pcm: ByteArray, length: Int = pcm.size) {
+        if (bypass || length < 4) return
+        var idx = 0
+        val end = length - 3
+        while (idx < end) {
+            val lRaw = (pcm[idx].toInt() and 0xFF) or (pcm[idx + 1].toInt() shl 8)
+            val rRaw = (pcm[idx + 2].toInt() and 0xFF) or (pcm[idx + 3].toInt() shl 8)
+
+            val lOut = highShelf.processLeft(midPeak.processLeft(lowShelf.processLeft(lRaw.toDouble())))
+                .toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            val rOut = highShelf.processRight(midPeak.processRight(lowShelf.processRight(rRaw.toDouble())))
+                .toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+
+            pcm[idx] = (lOut and 0xFF).toByte()
+            pcm[idx + 1] = ((lOut shr 8) and 0xFF).toByte()
+            pcm[idx + 2] = (rOut and 0xFF).toByte()
+            pcm[idx + 3] = ((rOut shr 8) and 0xFF).toByte()
+            idx += 4
+        }
+    }
+
     fun processStereo16Bit(pcm: ByteArray, length: Int = pcm.size): ByteArray {
         if (bypass || length < 4) return pcm
         val out = pcm.copyOf(length)
-        val inBuf = ByteBuffer.wrap(pcm, 0, length).order(ByteOrder.LITTLE_ENDIAN)
-        val outBuf = ByteBuffer.wrap(out, 0, length).order(ByteOrder.LITTLE_ENDIAN)
-
-        val frames = length / 4
-        for (i in 0 until frames) {
-            var l = inBuf.short.toDouble()
-            var r = inBuf.short.toDouble()
-
-            l = highShelf.processLeft(midPeak.processLeft(lowShelf.processLeft(l)))
-            r = highShelf.processRight(midPeak.processRight(lowShelf.processRight(r)))
-
-            outBuf.putShort(l.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
-            outBuf.putShort(r.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
-        }
+        processStereo16BitInPlace(out, length)
         return out
     }
 

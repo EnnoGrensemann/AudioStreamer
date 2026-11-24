@@ -106,7 +106,7 @@ class AudioStreamServer(
                     val chunk = connection.queue.take()
                     bufferedOut.write(chunk)
                     pendingFlush++
-                    if (connection.queue.isEmpty() || pendingFlush >= 4) {
+                    if (pendingFlush >= 4) {
                         bufferedOut.flush()
                         pendingFlush = 0
                     }
