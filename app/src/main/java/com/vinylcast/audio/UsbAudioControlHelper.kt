@@ -59,6 +59,16 @@ class UsbAudioControlHelper(private val context: Context) {
     }
 
     suspend fun requestPermissionAndInspect(): String {
+        return try {
+            requestPermissionAndInspectInternal()
+        } catch (t: Throwable) {
+            val msg = "USB-Fehler: ${t.javaClass.simpleName}: ${t.message}"
+            com.vinylcast.util.DebugLog.log("UAC", msg)
+            msg
+        }
+    }
+
+    private suspend fun requestPermissionAndInspectInternal(): String {
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         val device = findUsbAudioDevice() ?: return "Kein USB-Audio-Gerät am USB-Port gefunden."
 
@@ -215,7 +225,8 @@ class UsbAudioControlHelper(private val context: Context) {
             } else {
                 PendingIntent.FLAG_UPDATE_CURRENT
             }
-            val pi = PendingIntent.getBroadcast(context, 0, Intent(ACTION_USB_PERMISSION), flags)
+            val piIntent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
+            val pi = PendingIntent.getBroadcast(context, 0, piIntent, flags)
             usbManager.requestPermission(device, pi)
             cont.invokeOnCancellation {
                 runCatching { context.unregisterReceiver(receiver) }
