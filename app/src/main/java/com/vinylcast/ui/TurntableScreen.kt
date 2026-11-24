@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,14 +36,19 @@ import androidx.compose.material.icons.filled.ScreenLockPortrait
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -60,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vinylcast.model.EqPreset
 import com.vinylcast.model.OutputTarget
 import com.vinylcast.ui.components.TurntableDisc
 import com.vinylcast.ui.components.VuMeter
@@ -87,6 +95,7 @@ fun TurntableScreen(
 
     val usbDevice = inputDevices.firstOrNull { it.isUsb }
     var outputMenuExpanded by remember { mutableStateOf(false) }
+    var showEqSheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -150,21 +159,40 @@ fun TurntableScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.toggleDarkMode() }) {
+                IconButton(
+                    onClick = { showEqSheet = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Equalizer",
+                        tint = if (settings.eq.preset != EqPreset.FLAT) colors.amberPrimary else colors.textMuted
+                    )
+                }
+                IconButton(
+                    onClick = { viewModel.toggleDarkMode() },
+                    modifier = Modifier.size(38.dp)
+                ) {
                     Icon(
                         imageVector = if (settings.darkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
                         contentDescription = if (settings.darkMode) "Light Mode aktivieren" else "Dark Mode aktivieren",
                         tint = colors.amberPrimary
                     )
                 }
-                IconButton(onClick = { viewModel.toggleKeepScreenOn() }) {
+                IconButton(
+                    onClick = { viewModel.toggleKeepScreenOn() },
+                    modifier = Modifier.size(38.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.ScreenLockPortrait,
                         contentDescription = "Display aktiv lassen",
                         tint = if (settings.keepScreenOn) colors.amberPrimary else colors.textMuted
                     )
                 }
-                IconButton(onClick = onOpenSettings) {
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.size(38.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "Einstellungen",
@@ -484,5 +512,112 @@ fun TurntableScreen(
                 modifier = Modifier.width(36.dp)
             )
         }
+    }
+
+    if (showEqSheet) {
+        EqBottomSheet(
+            eq = settings.eq,
+            onSelectPreset = { viewModel.selectEqPreset(it) },
+            onUpdateBands = { b, m, t -> viewModel.updateEqBands(b, m, t) },
+            onDismiss = { showEqSheet = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun EqBottomSheet(
+    eq: com.vinylcast.model.EqSettings,
+    onSelectPreset: (EqPreset) -> Unit,
+    onUpdateBands: (Float, Float, Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = VinylTheme.colors
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Equalizer",
+                color = colors.textPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                EqPreset.entries.filter { it != EqPreset.CUSTOM }.forEach { preset ->
+                    val selected = eq.preset == preset
+                    FilterChip(
+                        selected = selected,
+                        onClick = { onSelectPreset(preset) },
+                        label = { Text(preset.label, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = colors.amberPrimary,
+                            selectedLabelColor = colors.background
+                        )
+                    )
+                }
+            }
+
+            EqBandSlider(
+                label = "Bass (120 Hz)",
+                valueDb = eq.bassDb,
+                onValueChange = { onUpdateBands(it, eq.midDb, eq.trebleDb) }
+            )
+            EqBandSlider(
+                label = "Mitten (1 kHz)",
+                valueDb = eq.midDb,
+                onValueChange = { onUpdateBands(eq.bassDb, it, eq.trebleDb) }
+            )
+            EqBandSlider(
+                label = "Höhen (6.5 kHz)",
+                valueDb = eq.trebleDb,
+                onValueChange = { onUpdateBands(eq.bassDb, eq.midDb, it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun EqBandSlider(
+    label: String,
+    valueDb: Float,
+    onValueChange: (Float) -> Unit
+) {
+    val colors = VinylTheme.colors
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = label, color = colors.textPrimary, fontSize = 13.sp)
+            val sign = if (valueDb > 0.05f) "+" else ""
+            Text(
+                text = "$sign${"%.1f".format(valueDb)} dB",
+                color = colors.amberPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Slider(
+            value = valueDb,
+            onValueChange = { onValueChange((it * 2f).toInt() / 2f) },
+            valueRange = -12f..12f,
+            colors = SliderDefaults.colors(
+                thumbColor = colors.amberPrimary,
+                activeTrackColor = colors.amberPrimary,
+                inactiveTrackColor = colors.surfaceElevated
+            )
+        )
     }
 }

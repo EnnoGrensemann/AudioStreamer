@@ -90,6 +90,7 @@ class VinylStreamService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private val signalDetector = AudioSignalDetector(thresholdRms = 0.002f)
+    private val eqProcessor = com.vinylcast.audio.ThreeBandEqProcessor()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -221,10 +222,12 @@ class VinylStreamService : Service() {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
                         val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
                         val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
-                        server?.broadcastPcm(gainedBytes)
-                        track?.write(gainedBytes, 0, gainedBytes.size)
+                        eqProcessor.updateSettings(StreamController.eqSettings.value, sampleRate)
+                        val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
+                        server?.broadcastPcm(eqBytes)
+                        track?.write(eqBytes, 0, eqBytes.size)
                         val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
-                        updateVuAndSignal(gainedBytes, gainedBytes.size, detectSignal)
+                        updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
                     } else if (read < 0) {
                         StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
                         break
@@ -289,10 +292,12 @@ class VinylStreamService : Service() {
                         val validBytes = data.copyOf(length)
                         val stereoBytes = if (cfg.channels == 2) validBytes else monoToStereo(validBytes)
                         val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
-                        server?.broadcastPcm(gainedBytes)
-                        track?.write(gainedBytes, 0, gainedBytes.size)
+                        eqProcessor.updateSettings(StreamController.eqSettings.value, cfg.sampleRate)
+                        val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
+                        server?.broadcastPcm(eqBytes)
+                        track?.write(eqBytes, 0, eqBytes.size)
                         val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
-                        updateVuAndSignal(gainedBytes, gainedBytes.size, detectSignal)
+                        updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
                     }
                 }
             )

@@ -63,6 +63,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         discoverSonos()
+        viewModelScope.launch {
+            settingsRepo.settingsFlow.collect { s ->
+                StreamController.setEqSettings(s.eq)
+            }
+        }
     }
 
     fun discoverSonos() {
@@ -202,6 +207,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setGainMultiplier(gain: Float) {
         viewModelScope.launch {
             settingsRepo.updateGainMultiplier(gain)
+        }
+    }
+
+    fun selectEqPreset(preset: com.vinylcast.model.EqPreset) {
+        val next = com.vinylcast.model.EqSettings(
+            preset = preset,
+            bassDb = preset.bassDb,
+            midDb = preset.midDb,
+            trebleDb = preset.trebleDb
+        )
+        StreamController.setEqSettings(next)
+        viewModelScope.launch {
+            settingsRepo.updateEqSettings(next)
+        }
+    }
+
+    fun updateEqBands(bassDb: Float, midDb: Float, trebleDb: Float) {
+        val next = com.vinylcast.model.EqSettings(
+            preset = com.vinylcast.model.EqPreset.CUSTOM,
+            bassDb = bassDb.coerceIn(-12f, 12f),
+            midDb = midDb.coerceIn(-12f, 12f),
+            trebleDb = trebleDb.coerceIn(-12f, 12f)
+        )
+        StreamController.setEqSettings(next)
+        viewModelScope.launch {
+            settingsRepo.updateEqSettings(next)
         }
     }
 

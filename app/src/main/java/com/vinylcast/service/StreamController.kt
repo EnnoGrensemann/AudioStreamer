@@ -34,8 +34,15 @@ object StreamController {
     private val _activeSonos = MutableStateFlow<SonosDevice?>(null)
     val activeSonos: StateFlow<SonosDevice?> = _activeSonos.asStateFlow()
 
+    private val _eqSettings = MutableStateFlow(com.vinylcast.model.EqSettings())
+    val eqSettings: StateFlow<com.vinylcast.model.EqSettings> = _eqSettings.asStateFlow()
+
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
+    fun setEqSettings(eq: com.vinylcast.model.EqSettings) {
+        _eqSettings.value = eq
+    }
 
     fun setStreaming(streaming: Boolean, url: String? = _streamUrl.value) {
         _isStreaming.value = streaming
