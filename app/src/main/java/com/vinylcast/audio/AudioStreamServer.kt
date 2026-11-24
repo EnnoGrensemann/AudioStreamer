@@ -65,6 +65,7 @@ class AudioStreamServer(
             try {
                 socket.tcpNoDelay = true
                 socket.sendBufferSize = 65536
+                runCatching { socket.trafficClass = 0xB8 } // QoS Expedited Forwarding for audio
                 socket.soTimeout = 10_000
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 val requestLine = reader.readLine() ?: return@thread

@@ -95,10 +95,8 @@ class ThreeBandEqProcessor(private var sampleRate: Int = 48000) {
             val lRaw = (pcm[idx].toInt() and 0xFF) or (pcm[idx + 1].toInt() shl 8)
             val rRaw = (pcm[idx + 2].toInt() and 0xFF) or (pcm[idx + 3].toInt() shl 8)
 
-            val lOut = highShelf.processLeft(midPeak.processLeft(lowShelf.processLeft(lRaw.toDouble())))
-                .toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            val rOut = highShelf.processRight(midPeak.processRight(lowShelf.processRight(rRaw.toDouble())))
-                .toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            val lOut = softLimit(highShelf.processLeft(midPeak.processLeft(lowShelf.processLeft(lRaw.toDouble()))))
+            val rOut = softLimit(highShelf.processRight(midPeak.processRight(lowShelf.processRight(rRaw.toDouble()))))
 
             pcm[idx] = (lOut and 0xFF).toByte()
             pcm[idx + 1] = ((lOut shr 8) and 0xFF).toByte()
@@ -106,6 +104,16 @@ class ThreeBandEqProcessor(private var sampleRate: Int = 48000) {
             pcm[idx + 3] = ((rOut shr 8) and 0xFF).toByte()
             idx += 4
         }
+    }
+
+    private fun softLimit(sample: Double): Int {
+        val threshold = 28000.0
+        val absVal = abs(sample)
+        if (absVal <= threshold) return sample.toInt()
+        val excess = absVal - threshold
+        val compressed = threshold + (excess / (1.0 + excess / 4767.0))
+        val limited = if (sample >= 0.0) compressed else -compressed
+        return limited.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
     }
 
     fun processStereo16Bit(pcm: ByteArray, length: Int = pcm.size): ByteArray {

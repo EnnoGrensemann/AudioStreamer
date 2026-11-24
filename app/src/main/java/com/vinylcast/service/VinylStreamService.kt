@@ -494,8 +494,7 @@ class VinylStreamService : Service() {
             acquire(6 * 60 * 60 * 1000L)
         }
         val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        @Suppress("DEPRECATION")
-        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "VinylCast::WifiLock").apply {
+        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "VinylCast::WifiLock").apply {
             acquire()
         }
     }
