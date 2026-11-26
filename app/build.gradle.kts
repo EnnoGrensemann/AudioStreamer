@@ -20,20 +20,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    flavorDimensions += "formFactor"
-    productFlavors {
-        create("mobile") {
-            dimension = "formFactor"
-            applicationId = "com.vinylcast"
-            buildConfigField("boolean", "IS_TV", "false")
-        }
-        create("tv") {
-            dimension = "formFactor"
-            applicationId = "com.vinylcast.tv"
-            buildConfigField("boolean", "IS_TV", "true")
-        }
-    }
-
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

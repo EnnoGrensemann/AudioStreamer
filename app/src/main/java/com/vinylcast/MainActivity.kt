@@ -1,8 +1,12 @@
 package com.vinylcast
 
 import android.Manifest
+import android.app.UiModeManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
@@ -33,6 +37,12 @@ class MainActivity : ComponentActivity() {
 
     private val usbAttachedTrigger = mutableIntStateOf(0)
 
+    private fun isRunningOnTv(): Boolean {
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        return uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
@@ -42,6 +52,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val isTv = isRunningOnTv()
+        if (isTv) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
 
         setContent {
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -62,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            if (BuildConfig.IS_TV) {
+            if (isTv) {
                 val tvVm: TvViewModel = viewModel()
                 val settings by tvVm.settings.collectAsState()
                 val usbTrigger by usbAttachedTrigger
