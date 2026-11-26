@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Match USB Audio Class devices (class 1) so Android TV remembers USB permissions -->
+    <usb-device class="1" />
+</resources>

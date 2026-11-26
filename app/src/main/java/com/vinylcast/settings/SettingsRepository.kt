@@ -29,6 +29,7 @@ class SettingsRepository(private val context: Context) {
         val EQ_BASS = floatPreferencesKey("eq_bass")
         val EQ_MID = floatPreferencesKey("eq_mid")
         val EQ_TREBLE = floatPreferencesKey("eq_treble")
+        val PREFERRED_OUTPUT_ID = intPreferencesKey("preferred_output_id")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -44,7 +45,8 @@ class SettingsRepository(private val context: Context) {
                 bassDb = (prefs[Keys.EQ_BASS] ?: preset.bassDb).coerceIn(-12f, 12f),
                 midDb = (prefs[Keys.EQ_MID] ?: preset.midDb).coerceIn(-12f, 12f),
                 trebleDb = (prefs[Keys.EQ_TREBLE] ?: preset.trebleDb).coerceIn(-12f, 12f)
-            )
+            ),
+            preferredOutputDeviceId = prefs[Keys.PREFERRED_OUTPUT_ID]?.takeIf { it > 0 }
         )
     }
 
@@ -82,6 +84,16 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.EQ_BASS] = eq.bassDb.coerceIn(-12f, 12f)
             prefs[Keys.EQ_MID] = eq.midDb.coerceIn(-12f, 12f)
             prefs[Keys.EQ_TREBLE] = eq.trebleDb.coerceIn(-12f, 12f)
+        }
+    }
+
+    suspend fun updatePreferredOutputDevice(deviceId: Int?) {
+        context.dataStore.edit { prefs ->
+            if (deviceId == null || deviceId <= 0) {
+                prefs.remove(Keys.PREFERRED_OUTPUT_ID)
+            } else {
+                prefs[Keys.PREFERRED_OUTPUT_ID] = deviceId
+            }
         }
     }
 

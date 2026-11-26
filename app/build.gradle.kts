@@ -12,12 +12,26 @@ android {
 
     defaultConfig {
         applicationId = "com.vinylcast"
-        minSdk = 29
+        minSdk = 28
         targetSdk = 35
         versionCode = (project.findProperty("VERSION_CODE") as String?)?.toIntOrNull() ?: 1
         versionName = (project.findProperty("VERSION_NAME") as String?) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "formFactor"
+    productFlavors {
+        create("mobile") {
+            dimension = "formFactor"
+            applicationId = "com.vinylcast"
+            buildConfigField("boolean", "IS_TV", "false")
+        }
+        create("tv") {
+            dimension = "formFactor"
+            applicationId = "com.vinylcast.tv"
+            buildConfigField("boolean", "IS_TV", "true")
+        }
     }
 
     externalNativeBuild {

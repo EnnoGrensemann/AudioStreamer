@@ -66,6 +66,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             settingsRepo.settingsFlow.collect { s ->
                 StreamController.setEqSettings(s.eq)
+                StreamController.setGainMultiplier(s.gainMultiplier)
             }
         }
     }

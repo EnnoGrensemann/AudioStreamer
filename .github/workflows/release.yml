@@ -1,4 +1,4 @@
-name: Build & Release VinylCast APK
+name: Build & Release VinylCast APKs (Mobile & TV)
 
 on:
   push:
@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release Tag (z.B. v1.0.0)"
+        description: "Release Tag (z.B. v2.0.0)"
         required: false
-        default: "v1.0.0"
+        default: "v2.0.0"
 
 permissions:
   contents: write
@@ -31,8 +31,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
+      - name: Run Unit Tests (Mobile & TV)
+        run: ./gradlew testMobileDebugUnitTest testTvDebugUnitTest
 
       - name: Prepare Release Keystore
         id: keystore
@@ -61,7 +61,7 @@ jobs:
             echo "has_keystore=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build Release APK
+      - name: Build Release APKs (Mobile & TV)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || env.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || env.KEY_ALIAS }}
@@ -73,18 +73,22 @@ jobs:
             VERSION="${{ inputs.tag_name }}"
             VERSION="${VERSION#v}"
           fi
-          ./gradlew assembleRelease -PVERSION_NAME="$VERSION"
+          ./gradlew assembleMobileRelease assembleTvRelease -PVERSION_NAME="$VERSION"
 
-      - name: Rename APK
+      - name: Rename APKs
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          cp "$APK_PATH" "${{ github.workspace }}/VinylCast-release.apk"
+          MOBILE_APK=$(find app/build/outputs/apk/mobile/release -name "*.apk" | head -n 1)
+          TV_APK=$(find app/build/outputs/apk/tv/release -name "*.apk" | head -n 1)
+          cp "$MOBILE_APK" "${{ github.workspace }}/VinylCast-mobile-release.apk"
+          cp "$TV_APK" "${{ github.workspace }}/VinylCast-tv-release.apk"
 
-      - name: Upload APK Artifact
+      - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VinylCast-APK
-          path: ${{ github.workspace }}/VinylCast-release.apk
+          name: VinylCast-APKs
+          path: |
+            ${{ github.workspace }}/VinylCast-mobile-release.apk
+            ${{ github.workspace }}/VinylCast-tv-release.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -93,4 +97,5 @@ jobs:
           name: "VinylCast ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}"
           generate_release_notes: true
           files: |
-            ${{ github.workspace }}/VinylCast-release.apk
+            ${{ github.workspace }}/VinylCast-mobile-release.apk
+            ${{ github.workspace }}/VinylCast-tv-release.apk

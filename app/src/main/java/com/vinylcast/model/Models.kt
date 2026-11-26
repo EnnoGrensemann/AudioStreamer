@@ -28,6 +28,15 @@ data class AudioInputDevice(
     val typeLabel: String
 )
 
+data class AudioOutputDevice(
+    val id: Int,
+    val name: String,
+    val type: Int,
+    val typeLabel: String,
+    val isOptical: Boolean,
+    val isUsb: Boolean
+)
+
 data class SonosDevice(
     val udn: String,
     val roomName: String,
@@ -53,5 +62,6 @@ data class AppSettings(
     val keepScreenOn: Boolean = false,
     val darkMode: Boolean = true,
     val gainMultiplier: Float = 1f,
-    val eq: EqSettings = EqSettings()
+    val eq: EqSettings = EqSettings(),
+    val preferredOutputDeviceId: Int? = null
 )

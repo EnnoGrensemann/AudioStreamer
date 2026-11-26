@@ -47,17 +47,22 @@ class VinylStreamService : Service() {
 
         const val ACTION_START = "com.vinylcast.action.START"
         const val ACTION_STOP = "com.vinylcast.action.STOP"
+        const val ACTION_UPDATE_OUTPUT = "com.vinylcast.action.UPDATE_OUTPUT"
         const val EXTRA_PORT = "extra_port"
         const val EXTRA_ROOM_NAME = "extra_room_name"
         const val EXTRA_GAIN = "extra_gain"
         const val EXTRA_LOCAL_PLAYBACK = "extra_local_playback"
+        const val EXTRA_OUTPUT_DEVICE_ID = "extra_output_device_id"
+        const val EXTRA_AVOID_USB_OUTPUT = "extra_avoid_usb_output"
 
         fun startService(
             context: Context,
             port: Int,
             roomName: String,
             gainMultiplier: Float,
-            localPlayback: Boolean
+            localPlayback: Boolean,
+            preferredOutputDeviceId: Int? = null,
+            avoidUsbOutput: Boolean = false
         ) {
             val intent = Intent(context, VinylStreamService::class.java).apply {
                 action = ACTION_START
@@ -65,12 +70,22 @@ class VinylStreamService : Service() {
                 putExtra(EXTRA_ROOM_NAME, roomName)
                 putExtra(EXTRA_GAIN, gainMultiplier)
                 putExtra(EXTRA_LOCAL_PLAYBACK, localPlayback)
+                putExtra(EXTRA_OUTPUT_DEVICE_ID, preferredOutputDeviceId ?: -1)
+                putExtra(EXTRA_AVOID_USB_OUTPUT, avoidUsbOutput)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {
                 context.startService(intent)
             }
+        }
+
+        fun updateOutputDevice(context: Context, preferredOutputDeviceId: Int?) {
+            val intent = Intent(context, VinylStreamService::class.java).apply {
+                action = ACTION_UPDATE_OUTPUT
+                putExtra(EXTRA_OUTPUT_DEVICE_ID, preferredOutputDeviceId ?: -1)
+            }
+            context.startService(intent)
         }
 
         fun stopService(context: Context) {
@@ -107,14 +122,25 @@ class VinylStreamService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_UPDATE_OUTPUT -> {
+                val outId = intent.getIntExtra(EXTRA_OUTPUT_DEVICE_ID, -1).takeIf { it > 0 }
+                applyPreferredOutputRouting(audioTrack, outId, avoidUsbOutput = true)
+            }
             ACTION_START -> {
                 val port = intent.getIntExtra(EXTRA_PORT, 8765)
                 val roomName = intent.getStringExtra(EXTRA_ROOM_NAME) ?: "Sonos Playbar"
                 val gain = intent.getFloatExtra(EXTRA_GAIN, 1f).coerceIn(1f, 16f)
                 val localPlayback = intent.getBooleanExtra(EXTRA_LOCAL_PLAYBACK, false)
-                val label = if (localPlayback) "Spielt Line-In lokal (Handy / Bluetooth)" else "Streamt Line-In an $roomName"
+                val outId = intent.getIntExtra(EXTRA_OUTPUT_DEVICE_ID, -1).takeIf { it > 0 }
+                val avoidUsb = intent.getBooleanExtra(EXTRA_AVOID_USB_OUTPUT, false)
+                StreamController.setGainMultiplier(gain)
+                val label = when {
+                    avoidUsb -> "Spielt Vinyl über TV-Audio / TOSLINK"
+                    localPlayback -> "Spielt Line-In lokal (Handy / Bluetooth)"
+                    else -> "Streamt Line-In an $roomName"
+                }
                 startForeground(NOTIFICATION_ID, buildNotification(label))
-                startCaptureAndServer(port, gain, localPlayback)
+                startCaptureAndServer(port, localPlayback, outId, avoidUsb)
             }
         }
         return START_STICKY
@@ -123,12 +149,13 @@ class VinylStreamService : Service() {
     @SuppressLint("MissingPermission")
     private fun startCaptureAndServer(
         port: Int,
-        gainMultiplier: Float,
-        localPlayback: Boolean
+        localPlayback: Boolean,
+        preferredOutputDeviceId: Int?,
+        avoidUsbOutput: Boolean
     ) {
         if (isRunning.getAndSet(true)) return
 
-        acquireLocks()
+        acquireLocks(needWifiLock = !localPlayback)
         signalDetector.reset()
 
         val usbControl = UsbAudioControlHelper(this)
@@ -145,7 +172,7 @@ class VinylStreamService : Service() {
                     if (cfg != null && androidIntf != null && conn.claimInterface(androidIntf, true)) {
                         conn.setInterface(androidIntf)
                         usbControl.unmuteAndConfigureLineIn(conn, cfg)
-                        startUsbIsoStreaming(port, cfg, conn, androidIntf, gainMultiplier, localPlayback)
+                        startUsbIsoStreaming(port, cfg, conn, androidIntf, localPlayback, preferredOutputDeviceId, avoidUsbOutput)
                         return
                     } else {
                         conn.close()
@@ -174,7 +201,7 @@ class VinylStreamService : Service() {
             }
         } else null
 
-        val track = if (localPlayback) createLocalAudioTrack(sampleRate) else null
+        val track = if (localPlayback) createLocalAudioTrack(sampleRate, preferredOutputDeviceId, avoidUsbOutput) else null
         audioTrack = track
         track?.play()
 
@@ -220,14 +247,17 @@ class VinylStreamService : Service() {
                     val read = recorder.read(chunk, 0, chunk.size)
                     if (read > 0) {
                         val validBytes = if (read == chunk.size) chunk else chunk.copyOf(read)
-                        val stereoBytes = if (isStereo) validBytes else monoToStereo(validBytes)
-                        val gainedBytes = if (gainMultiplier > 1.05f) applyGain(stereoBytes, gainMultiplier) else stereoBytes
+                        val audioBytes = if (isStereo) validBytes else monoToStereo(validBytes)
+                        val gain = StreamController.gainMultiplier.value
+                        if (gain > 1.05f) {
+                            applyGainInPlace(audioBytes, gain)
+                        }
                         eqProcessor.updateSettings(StreamController.eqSettings.value, sampleRate)
-                        val eqBytes = eqProcessor.processStereo16Bit(gainedBytes)
-                        server?.broadcastPcm(eqBytes)
-                        track?.write(eqBytes, 0, eqBytes.size)
+                        eqProcessor.processStereo16BitInPlace(audioBytes)
+                        server?.broadcastPcm(audioBytes)
+                        track?.write(audioBytes, 0, audioBytes.size)
                         val detectSignal = System.currentTimeMillis() - captureStartedAtMs > 450L
-                        updateVuAndSignal(eqBytes, eqBytes.size, detectSignal)
+                        updateVuAndSignal(audioBytes, audioBytes.size, detectSignal)
                     } else if (read < 0) {
                         StreamController.setError("Audio-Lesefehler ($read). USB-Adapter prüfen.")
                         break
@@ -249,8 +279,9 @@ class VinylStreamService : Service() {
         cfg: UsbAudioControlHelper.LineInStreamConfig,
         conn: UsbDeviceConnection,
         intf: UsbInterface,
-        gainMultiplier: Float,
-        localPlayback: Boolean
+        localPlayback: Boolean,
+        preferredOutputDeviceId: Int?,
+        avoidUsbOutput: Boolean
     ) {
         usbConnection = conn
         usbStreamingInterface = intf
@@ -266,7 +297,7 @@ class VinylStreamService : Service() {
             }
         } else null
 
-        val track = if (localPlayback) createLocalAudioTrack(cfg.sampleRate) else null
+        val track = if (localPlayback) createLocalAudioTrack(cfg.sampleRate, preferredOutputDeviceId, avoidUsbOutput) else null
         audioTrack = track
         track?.play()
 
@@ -290,8 +321,9 @@ class VinylStreamService : Service() {
                 } ?: continue
 
                 val audioBytes = if (cfg.channels == 2) rawChunk else monoToStereo(rawChunk)
-                if (gainMultiplier > 1.05f) {
-                    applyGainInPlace(audioBytes, gainMultiplier)
+                val gain = StreamController.gainMultiplier.value
+                if (gain > 1.05f) {
+                    applyGainInPlace(audioBytes, gain)
                 }
                 eqProcessor.updateSettings(StreamController.eqSettings.value, cfg.sampleRate)
                 eqProcessor.processStereo16BitInPlace(audioBytes)
@@ -329,13 +361,17 @@ class VinylStreamService : Service() {
         }
     }
 
-    private fun createLocalAudioTrack(sampleRate: Int): AudioTrack {
+    private fun createLocalAudioTrack(
+        sampleRate: Int,
+        preferredOutputDeviceId: Int?,
+        avoidUsbOutput: Boolean
+    ): AudioTrack {
         val minBuf = AudioTrack.getMinBufferSize(
             sampleRate,
             AudioFormat.CHANNEL_OUT_STEREO,
             AudioFormat.ENCODING_PCM_16BIT
-        ).coerceAtLeast(8192)
-        return AudioTrack.Builder()
+        ).coerceAtLeast(4096)
+        val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -351,7 +387,34 @@ class VinylStreamService : Service() {
             )
             .setBufferSizeInBytes(minBuf * 2)
             .setTransferMode(AudioTrack.MODE_STREAM)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
             .build()
+
+        applyPreferredOutputRouting(track, preferredOutputDeviceId, avoidUsbOutput)
+        return track
+    }
+
+    private fun applyPreferredOutputRouting(
+        track: AudioTrack?,
+        preferredOutputDeviceId: Int?,
+        avoidUsbOutput: Boolean
+    ) {
+        if (track == null) return
+        if (!avoidUsbOutput && preferredOutputDeviceId == null) {
+            track.setPreferredDevice(null)
+            return
+        }
+        val outputHelper = com.vinylcast.audio.AudioOutputDeviceHelper(this)
+        val targetOut = outputHelper.findBestTvOutputInfo(preferredOutputDeviceId)
+        if (targetOut != null) {
+            val ok = track.setPreferredDevice(targetOut)
+            val label = com.vinylcast.audio.AudioOutputDeviceHelper.labelForOutputType(targetOut.type)
+            Log.i(TAG, "AudioTrack preferred output: ${targetOut.productName} ($label, routed=$ok)")
+            StreamController.setActiveOutputLabel(label)
+        } else {
+            track.setPreferredDevice(null)
+            StreamController.setActiveOutputLabel("TV-Standard")
+        }
     }
 
     private fun chooseSampleRate(device: AudioDeviceInfo?): Int {
@@ -488,14 +551,22 @@ class VinylStreamService : Service() {
         releaseLocks()
     }
 
-    private fun acquireLocks() {
+    private fun acquireLocks(needWifiLock: Boolean) {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VinylCast::StreamWakeLock").apply {
             acquire(6 * 60 * 60 * 1000L)
         }
-        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "VinylCast::WifiLock").apply {
-            acquire()
+        if (needWifiLock) {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            @Suppress("DEPRECATION")
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            wifiLock = wm.createWifiLock(mode, "VinylCast::WifiLock").apply {
+                acquire()
+            }
         }
     }
 

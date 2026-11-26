@@ -37,11 +37,25 @@ object StreamController {
     private val _eqSettings = MutableStateFlow(com.vinylcast.model.EqSettings())
     val eqSettings: StateFlow<com.vinylcast.model.EqSettings> = _eqSettings.asStateFlow()
 
+    private val _gainMultiplier = MutableStateFlow(1f)
+    val gainMultiplier: StateFlow<Float> = _gainMultiplier.asStateFlow()
+
+    private val _activeOutputLabel = MutableStateFlow("")
+    val activeOutputLabel: StateFlow<String> = _activeOutputLabel.asStateFlow()
+
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
     fun setEqSettings(eq: com.vinylcast.model.EqSettings) {
         _eqSettings.value = eq
+    }
+
+    fun setGainMultiplier(gain: Float) {
+        _gainMultiplier.value = gain.coerceIn(1f, 16f)
+    }
+
+    fun setActiveOutputLabel(label: String) {
+        _activeOutputLabel.value = label
     }
 
     fun setStreaming(streaming: Boolean, url: String? = _streamUrl.value) {
